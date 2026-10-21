@@ -1,0 +1,28 @@
+# CC_NATIVE ?= gcc
+# CXX_NATIVE ?= g++
+# LD_NATIVE ?= g++
+# AR_NATIVE ?= ar
+
+# CC_EMCC ?= emcc
+# CXX_EMCC ?= emcc
+# LD_EMCC ?= emcc
+# AR_EMCC ?= emar
+
+# PYTHON ?= python
+
+# EMCC_OPT = -g -O0
+
+# WEBIDL_BINDER ?= $(PYTHON) $${EMSDK}/upstream/emscripten/tools/webidl_binder.py
+
+INCLUDE_EXTRA = -I/opt/homebrew/include -I/opt/homebrew/opt/curl/include
+
+CFLAGS_NATIVE = \
+	-O2 -g -Werror \
+	$(shell sdl2-config --cflags) \
+	-DENABLE_DEBUGGER
+
+# CXXFLAGS_NATIVE ?= $(CFLAGS_NATIVE)
+
+LDFLAGS_NATIVE =  \
+	$(shell sdl2-config --libs) -lSDL2_image -lreadline -pthread -lresolv -lcurl \
+	-L/opt/homebrew/lib -L/opt/homebrew/opt/curl/lib

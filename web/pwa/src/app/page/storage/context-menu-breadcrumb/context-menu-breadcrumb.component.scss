@@ -1,0 +1,12 @@
+.text-wrapper {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    // WORKAROUND Ionic bug that causes "end" slot to overflow to next line
+    max-width: calc(var(--cp-breadcrumb-menu-width) - 30px);
+
+    .ios & {
+        max-width: calc(var(--cp-breadcrumb-menu-width) - 70px);
+    }
+}

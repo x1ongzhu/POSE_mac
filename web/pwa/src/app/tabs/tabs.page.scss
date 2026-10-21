@@ -1,0 +1,40 @@
+
+
+ion-tab-bar {
+    &.small-ui {
+        height: 25px;
+
+        ion-icon {
+            height: 21px;
+
+            &.md {
+                margin-top: 3px;
+                
+                position: absolute;
+                bottom: 1px;
+            }
+        }
+
+        ion-label {
+            display: none;
+        }
+    }
+
+    min-width: 280px;
+}
+
+ion-tab-bar.disabled {
+    display: none;
+}
+
+.overflow-wrapper {
+    overflow-x: auto;
+}
+
+.stacking-fix {
+    transform: translateX(0);
+}
+
+ion-icon {
+    font-size: 25px;
+}

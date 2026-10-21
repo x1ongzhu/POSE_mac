@@ -1,0 +1,40 @@
+.server-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+
+    ion-input {
+        flex-grow: 1;
+    }
+}
+
+h1 {
+    margin-left: 1rem;
+    margin-right: 1rem;
+}
+
+.settings-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    margin-bottom: 2em;
+}
+
+.settings-form {
+    max-width: 40em;
+    flex-basis: 100%;
+}
+
+ion-item {
+    --background: none;
+}
+
+ion-select {
+    margin-right: 0.5em;
+}
+
+.test-proxy-button {
+    max-height: 1.5em;
+    align-self: end;
+    margin-right: 12px;
+}

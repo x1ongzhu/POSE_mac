@@ -1,0 +1,174 @@
+/*
+ * App Global CSS
+ * ----------------------------------------------------------------------------
+ * Put style rules here that you want to apply globally. These styles are for
+ * the entire app and not just one component. Additionally, this file can be
+ * used as an entry point to import other CSS/Sass files to be included in the
+ * output CSS.
+ * For more information on global stylesheets, visit the documentation:
+ * https://ionicframework.com/docs/layout/global-stylesheets
+ */
+
+/* Core CSS required for Ionic components to work properly */
+@import "~@ionic/angular/css/core.css";
+
+/* Basic CSS for apps built with Ionic */
+@import "~@ionic/angular/css/normalize.css";
+@import "~@ionic/angular/css/structure.css";
+@import "~@ionic/angular/css/typography.css";
+@import '~@ionic/angular/css/display.css';
+
+/* Optional CSS utils that can be commented out */
+@import "~@ionic/angular/css/padding.css";
+@import "~@ionic/angular/css/float-elements.css";
+@import "~@ionic/angular/css/text-alignment.css";
+@import "~@ionic/angular/css/text-transformation.css";
+@import "~@ionic/angular/css/flex-utils.css";
+
+html {
+    /* Work around scrolling bug in iOS */
+    height: 100%;
+
+    --cp-page-width: 40em;
+    --cp-breadcrumb-menu-width: 250px;
+
+    user-select: none;
+}
+
+markdown, .text-selectable {
+    user-select: text;
+
+    p {
+        cursor: auto;
+    }
+}
+
+ion-title, ion-alert, p {
+    cursor: default;
+}
+
+.installation-error {
+    z-index: 100000 !important;
+}
+
+.cpe-alert-message {
+    z-index: 150000 !important;
+}
+
+
+.cpe-alert-error {
+    z-index: 200000 !important;
+}
+
+
+.alert-checkbox-no-border .alert-checkbox-group {
+    border: none !important;
+}
+
+.md .alert-checkbox.ion-focused {
+    background: inherit !important;
+}
+
+.cp-breadcrumb-menu {
+    --width: var(--cp-breadcrumb-menu-width);
+}
+
+
+ion-label h4, p {
+    margin-top: 0.75em;
+}
+
+ion-item-option {
+    font-size: 1.5em;
+    min-width: 3em;
+}
+
+ion-item-sliding {
+    cursor: pointer;
+    max-width: var(--cp-page-width);
+    margin: auto;
+}
+
+ion-item {
+    --background: none;
+    max-width: var(--cp-page-width);
+    margin: auto;
+}
+
+ion-toggle {
+    padding-right: 12px;
+}
+
+ion-item::part(native), ion-item-option {
+    --ion-safe-area-left: 0px;
+    --ion-safe-area-right: 0px;
+}
+
+ion-modal {
+    padding-left: var(--ion-safe-area-left, 0px);
+    padding-right: var(--ion-safe-area-right, 0px);
+
+    ion-content::part(scroll) {
+        max-width: var(--cp-page-width);
+        margin: auto;
+    }
+}
+
+.alert-radio-group .alert-button-inner {
+    word-break: break-word;
+}
+
+@media only screen and (min-width: 768px) and (min-height: 600px) {
+    ion-modal {
+        padding-left: 0;
+        padding-right: 0;
+    }
+}
+
+.ios ion-popover ion-item {
+    --border-color: var(--ion-color-light-shade);
+    --background: var(--ion-color-light);
+
+    @media (prefers-color-scheme: dark) {
+        & {
+            --border-color: var(--ion-color-light-tint);
+        }
+
+        &[aria-disabled="true"] {
+            opacity: 0.6;
+        }
+    }
+
+}
+
+.ios ion-popover::part(content) {
+    @media (prefers-color-scheme: dark) {
+        box-shadow: 0 0 0 1px black;
+    }
+}
+
+ion-list ion-item ion-label {
+    overflow-x: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+[labelPlacement="fixed"]::part(label) {
+    flex-basis: auto;
+    max-width: none;
+    width: auto;
+}
+
+markdown h1:not(:first-child) {
+    margin-top: 1.5em;
+}
+
+@media (prefers-color-scheme: dark) {
+    .ios ion-modal {
+        --box-shadow: 0 0 100px  #111; 
+    }
+}
+
+.alert-wrapper:focus-visible {
+    outline: 0px;
+}

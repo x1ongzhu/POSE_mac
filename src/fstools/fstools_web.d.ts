@@ -1,0 +1,48 @@
+import { FsckContext } from './web/binding/binding.d';
+import 'emscripten';
+
+import { FSTools, VoidPtr, MkfsContext } from './web/binding/binding';
+import {
+    GunzipContext as GunzipContextImpl,
+    GzipContext as GzipContextImpl,
+    CreateZipContext as CreateZipContextImpl,
+    ZipfileWalker as ZipfileWalkerImpl,
+    ModuleWithGunzipContext,
+    ModuleWithGzipContext,
+    ModuleWithCreateZipContext,
+    ModuleWithZipfileWalker,
+} from '../common/web/common';
+
+export * from './web/binding/binding';
+export { GunzipState, GzipState, ZipfileWalkerState } from '../common/web/common';
+
+export type GunzipContext = GunzipContextImpl<VoidPtr>;
+export type GzipContext = GzipContextImpl<VoidPtr>;
+export type CreateZipContext = CreateZipContextImpl<VoidPtr>;
+export type ZipfileWalker = ZipfileWalkerImpl<VoidPtr>;
+
+export interface Module
+    extends EmscriptenModule,
+        ModuleWithGunzipContext<VoidPtr>,
+        ModuleWithGzipContext<VoidPtr>,
+        ModuleWithCreateZipContext<VoidPtr>,
+        ModuleWithZipfileWalker<VoidPtr> {
+    ccall: typeof ccall;
+    addFunction: typeof addFunction;
+    getPointer(ptr: VoidPtr): number;
+    UTF8ToString: typeof UTF8ToString;
+
+    FSTools: { new (): FSTools };
+    MkfsContext: { new (): MkfsContext };
+    FsckContext: { new (blockCount: number): FsckContext };
+
+    destroy(fsTools: FSTools): void;
+    destroy(mkfsContext: MkfsContext): void;
+    destroy(fsckContext: FsckContext): void;
+    destroy(gunzipContext: GunzipContext): void;
+    destroy(gzipContext: GzipContext): void;
+}
+
+declare const createModule: (moduleOverrides: Partial<Module>) => Promise<Module>;
+
+export default createModule;

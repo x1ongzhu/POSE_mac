@@ -1,0 +1,27 @@
+interface FSTools {
+    void FSTools();
+
+    VoidPtr Malloc(long size);
+    void Free(VoidPtr buffer);
+    VoidPtr Nullptr();
+};
+
+interface MkfsContext {
+    void MkfsContext();
+
+    boolean Mkfs(long size, [Const] DOMString label);
+
+    VoidPtr GetImage();
+    long GetImageSize();
+};
+
+interface FsckContext {
+    void FsckContext(long blockCount);
+
+    VoidPtr GetImage();
+    VoidPtr GetDirtyPages();
+    long GetImageSize();
+
+    long Fsck();
+    long GetResult();
+};

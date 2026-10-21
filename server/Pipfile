@@ -1,0 +1,31 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+protobuf = "*"
+hexdump = "*"
+pyopenssl = "*"
+pyinstaller = "*"
+pywin32-ctypes = "*"
+pefile = "*"
+macholib = "*"
+aiohttp = "*"
+aiohttp-cors = "*"
+dnspython = "*"
+types-pyopenssl = "*"
+types-protobuf = "*"
+types-futures = "*"
+mypy = "*"
+pyreadline3 = "*"
+mypy-protobuf = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3"
+
+[scripts]
+cloudpilot-server = "python cloudpilot-server.py"
+build = "pyinstaller -n cloudpilot-server cloudpilot-server.py"

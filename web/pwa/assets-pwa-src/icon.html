@@ -1,0 +1,60 @@
+<html>
+
+<head>
+    <style>
+        html,
+        body {
+            background: none;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            border-radius: 20vw;
+            background: white;
+            border-width: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        img {
+            width: 80%;
+            height: 80%;
+        }
+
+        /* iOS */
+        @media (width: 180px) {
+            .container {
+                border-radius: 0;
+            }
+
+            img {
+                width: 85%;
+                height: 85%;
+            }
+        }
+
+        /* Favicon */
+        @media (width: 196px) {
+            .container {
+                background: none;
+            }
+
+            img {
+                width: 100%;
+                height: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <img src="cp-palmblue-001.svg">
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,247 @@
+syntax = "proto2";
+
+message Address {
+    required uint32 ip = 1;
+    required int32 port = 2;
+}
+
+message MsgSocketOpenRequest {
+    required uint32 type = 1;
+    required uint32 protocol = 2;
+}
+
+message MsgSocketOpenResponse {
+    required int32 handle = 1;
+    required int32 err = 2;
+}
+
+message MsgSocketBindRequest {
+    required int32 handle = 1;
+    required Address address = 2;
+    required int32 timeout = 3;
+}
+
+message MsgSocketBindResponse {
+    required int32 err = 1;
+}
+
+message MsgSocketAddrRequest {
+    required int32 handle = 1;
+    required bool requestAddressLocal = 2;
+    required bool requestAddressRemote = 3;
+    required int32 timeout = 4;
+}
+
+message MsgSocketAddrResponse {
+    optional Address addressLocal = 1;
+    optional Address addressRemote = 2;
+    required int32 err = 3;
+}
+
+message MsgSocketSendRequest {
+    required int32 handle = 1;
+    required bytes data = 2;
+    required uint32 flags = 3;
+    optional Address address = 4;
+    required int32 timeout = 5;
+}
+
+message MsgSocketSendResponse {
+    required int32 err = 1;
+    required int32 bytesSent = 2;
+}
+
+message MsgSocketReceiveRequest {
+    required int32 handle = 1;
+    required uint32 flags = 2;
+    required int32 timeout = 3;
+    required uint32 maxLen = 4;
+    required bool addressRequested = 5;
+}
+
+message MsgSocketReceiveResponse {
+    required int32 err = 1;
+    required bytes data = 2;
+    optional Address address = 3;
+}
+
+message MsgSocketCloseRequest {
+    required int32 handle = 1;
+    required int32 timeout = 4;
+}
+
+message MsgSocketCloseResponse {
+    required int32 err = 1;
+}
+
+message MsgGetHostByNameRequest {
+    required string name = 1;
+}
+
+message MsgGetHostByNameResponse {
+    required string name = 1;
+    optional string alias = 2;
+    repeated uint32 addresses = 3;
+    required int32 err = 4;
+}
+
+message MsgGetServByNameRequest {
+    required string name = 1;
+    required string protocol = 2;
+}
+
+message MsgGetServByNameResponse {
+    required uint32 port = 1;
+    required int32 err = 2;
+}
+
+message MsgSocketConnectRequest {
+    required int32 handle = 1;
+    required Address address = 2;
+    required int32 timeout = 3;
+}
+
+message MsgSocketConnectResponse {
+    required int32 err = 1;
+}
+
+message MsgSelectRequest {
+    required uint32 width = 2;
+    required uint32 readFDs = 3;
+    required uint32 writeFDs = 4;
+    required uint32 exceptFDs = 5;
+    required int32 timeout = 6;
+}
+
+message MsgSelectResponse {
+    required uint32 readFDs = 1;
+    required uint32 writeFDs = 2;
+    required uint32 exceptFDs = 3;
+    required int32 err = 4;
+}
+
+message MsgInvalidRequestResponse {
+    required bool tag = 1;
+}
+
+message MsgSettingGetRequest {
+    required uint32 setting = 1;
+}
+
+message MsgSettingGetResponse {
+    oneof value {
+        uint32 uint32val = 1;
+        uint32 uint8val = 2;
+        string strval = 3;
+    }
+
+    required int32 err = 4;
+}
+
+message MsgSocketOptionSetRequest {
+    required int32 handle = 1;
+    required uint32 level = 2;
+    required uint32 option = 3;
+    required int32 timeout = 4;
+    oneof value {
+        int32 intval = 6;
+        bytes bufval = 7;
+    }
+}
+
+message MsgSocketOptionSetResponse {
+    required int32 err = 1;
+}
+
+message MsgSocketOptionGetRequest {
+    required int32 handle = 1;
+    required uint32 level = 2;
+    required uint32 option = 3;
+    required int32 timeout = 4;
+}
+
+message MsgSocketOptionGetResponse {
+    required int32 err = 1;
+    oneof value {
+        int32 intval = 3;
+        bytes bufval = 4;
+    }
+}
+
+message MsgSocketListenRequest {
+    required int32 handle = 1;
+    required int32 backlog = 2;
+    required int32 timeout = 3;
+}
+
+message MsgSocketListenResponse {
+    required int32 err = 1;
+}
+
+message MsgSocketAcceptRequest {
+    required int32 handle = 1;
+    required int32 timeout = 2;
+}
+
+message MsgSocketAcceptResponse {
+    required int32 handle = 1;
+    required Address address = 2;
+    required int32 err = 3;
+}
+
+message MsgSocketShutdownRequest {
+    required int32 handle = 1;
+    required int32 direction = 2;
+    required int32 timeout = 3;
+}
+
+message MsgSocketShutdownResponse {
+    required int32 err = 1;
+}
+
+message MsgRequest {
+    required uint32 id = 1;
+
+    oneof payload {
+        MsgSocketOpenRequest socketOpenRequest = 2;
+        MsgSocketBindRequest socketBindRequest = 3;
+        MsgSocketAddrRequest socketAddrRequest = 4;
+        MsgSocketSendRequest socketSendRequest = 5;
+        MsgSocketReceiveRequest socketReceiveRequest = 6;
+        MsgSocketCloseRequest socketCloseRequest = 7;
+        MsgGetHostByNameRequest getHostByNameRequest = 8;
+        MsgGetServByNameRequest getServByNameRequest = 9;
+        MsgSocketConnectRequest socketConnectRequest = 10;
+        MsgSelectRequest selectRequest = 11;
+        MsgSettingGetRequest settingGetRequest = 12;
+        MsgSocketOptionSetRequest socketOptionSetRequest = 13;
+        MsgSocketListenRequest socketListenRequest = 14;
+        MsgSocketAcceptRequest socketAcceptRequest = 15;
+        MsgSocketOptionGetRequest socketOptionGetRequest = 16;
+        MsgSocketShutdownRequest socketShutdownRequest = 17;
+    }
+}
+
+message MsgResponse {
+    required uint32 id = 1;
+
+    oneof payload {
+        MsgSocketOpenResponse socketOpenResponse = 2;
+        MsgSocketBindResponse socketBindResponse = 3;
+        MsgSocketAddrResponse socketAddrResponse = 4;
+        MsgSocketSendResponse socketSendResponse = 5;
+        MsgSocketReceiveResponse socketReceiveResponse = 6;
+        MsgSocketCloseResponse socketCloseResponse = 7;
+        MsgGetHostByNameResponse getHostByNameResponse = 8;
+        MsgGetServByNameResponse getServByNameResponse = 9;
+        MsgSocketConnectResponse socketConnectResponse = 10;
+        MsgSelectResponse selectResponse = 11;
+        MsgSettingGetResponse settingGetResponse = 12;
+        MsgSocketOptionSetResponse socketOptionSetResponse = 13;
+        MsgSocketListenResponse socketListenResponse = 14;
+        MsgSocketAcceptResponse socketAcceptResponse = 15;
+        MsgSocketOptionGetResponse socketOptionGetResponse = 16;
+        MsgSocketShutdownResponse socketShutdownResponse = 17;
+        MsgInvalidRequestResponse invalidRequestResponse = 255;
+    }
+}

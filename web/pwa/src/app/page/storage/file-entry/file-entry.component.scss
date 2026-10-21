@@ -1,0 +1,58 @@
+ion-item {
+    background-color: var(--ion-background-color, white);
+    position: relative;
+}
+
+ion-icon.item-detail-icon {
+    min-width: 1em;
+}
+
+ion-label {
+    // WORKAROUND Ionic bug that causes "end" slot to overflow to next line
+    max-width: calc(min(var(--cp-page-width), 100vw) - 7em);
+
+    &.selecting {
+        max-width: calc(min(var(--cp-page-width), 100vw) - 8em);
+    }
+
+    .ios & {
+        max-width: calc(min(var(--cp-page-width), 100vw) - 6.5em);
+
+        &.selecting {
+            max-width: calc(min(var(--cp-page-width), 100vw) - 7.5em);
+        }
+    }
+}
+
+.attribute-icon-container {
+    position: absolute;
+    top: 0;
+    right: 3.25em;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 100%;
+
+    .ios & {
+        right: 3.5em;
+    }
+}
+
+ion-icon.attribute-icon {
+    color: var(--ion-color-step-600);
+    margin-left: 0.7em !important;
+
+    &[name="lock-closed-outline"] {
+        position: relative;
+        top: -2px;
+    }
+
+    .ios & {
+        color: rgba(var(--ion-text-color-rgb, 0, 0, 0), 0.4);
+        margin-left: 0;
+    }
+}
+
+.ios .selection-icon {
+    margin-left: 0.5em;
+}

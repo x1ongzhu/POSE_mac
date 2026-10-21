@@ -1,0 +1,51 @@
+ion-item {
+    --highlight-color-valid: var(--highlight-color-focused);
+    --background: none;
+}
+
+.engine-cloudpilot ion-range::part(label) {
+    min-width: 7.5rem;
+}
+
+.engine-uarm ion-range::part(label) {
+    min-width: 11rem;
+}
+
+h1 {
+    margin-left: 1rem;
+    margin-right: 1rem;
+}
+
+.nand-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+
+    ion-input {
+        flex-grow: 1;
+    }
+
+    ion-button {
+        max-height: 1.5em;
+        align-self: end;
+    }
+}
+
+ion-toggle {
+    padding-right: 0;
+}
+
+.input-nand ::ng-deep * {
+    cursor: pointer !important;
+}
+
+.horizontal-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 1rem;
+
+    ion-item {
+        flex: 1;
+    }
+}

@@ -1,0 +1,30 @@
+#ifndef _NETWORK_BACKEND_H_
+#define _NETWORK_BACKEND_H_
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef void (*net_RpcResultCb)(uint32_t sessiondId, const uint8_t* data, size_t len,
+                                void* context);
+
+void net_setRpcCallback(net_RpcResultCb resultCb, void* context);
+
+unsigned int net_openSession();
+
+void net_closeSession(uint32_t sessionId);
+void net_closeAllSessions();
+
+bool net_dispatchRpc(uint32_t sessionId, const uint8_t* data, size_t len);
+
+void net_setDnsServers(uint32_t sessionId, uint32_t primary, uint32_t secondary);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // _NETWORK_BACKEND_H_

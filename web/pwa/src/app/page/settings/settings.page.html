@@ -1,0 +1,144 @@
+<ion-header [translucent]="true">
+    <ion-toolbar>
+        <ion-title>Settings</ion-title>
+
+        <ion-buttons slot="secondary">
+            <ion-button (click)="showHelp()">
+                <ion-icon name="help-outline"></ion-icon>
+            </ion-button>
+
+            <app-pwa-prompt></app-pwa-prompt>
+        </ion-buttons>
+    </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+    <ion-header collapse="condense">
+        <ion-toolbar>
+            <ion-title size="large">Settings</ion-title>
+        </ion-toolbar>
+    </ion-header>
+
+    <div class="settings-container">
+        <form [formGroup]="formGroup" class="settings-form">
+            <h1>Emulation</h1>
+
+            <ion-item lines="none">
+                <ion-range
+                    label="Volume"
+                    labelPlacement="fixed"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    formControlName="volume"
+                ></ion-range>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="audioOnStart">Enable audio on start</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="featureRunHidden">
+                <ion-toggle labelPlacement="fixed" formControlName="runHidden">Run when hidden</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="emulateDPad">Emulate D-Pad</ion-toggle>
+            </ion-item>
+
+            <h1>Host integration</h1>
+
+            <ion-item lines="none" *ngIf="clipboardService.isSupported()">
+                <ion-toggle labelPlacement="fixed" formControlName="clipboardIntegration"
+                    >Clipboard integration</ion-toggle
+                >
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="networkRedirection">Network redirection</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="showRedirectionMode">
+                <ion-select
+                    class="redirection-mode-select"
+                    formControlName="networkRedirectionMode"
+                    label="Redirection method"
+                >
+                    <ion-select-option *ngFor="let mode of networkRedirectionModes" [value]="mode[0]"
+                        >{{ mode[1] }}
+                    </ion-select-option>
+                </ion-select>
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="showProxyServer">
+                <div class="server-container">
+                    <ion-input
+                        label="Proxy server"
+                        labelPlacement="stacked"
+                        placeholder="Proxy server host or URL"
+                        formControlName="proxyServer"
+                    ></ion-input>
+                    <ion-button
+                        class="test-proxy-button"
+                        [disabled]="!proxyServerValid"
+                        (click)="$event.preventDefault(); $event.stopPropagation(); testProxyConnection()"
+                        (touchstart)="$event.preventDefault(); $event.stopPropagation(); testProxyConnection()"
+                    >
+                        Test
+                    </ion-button>
+                </div>
+            </ion-item>
+
+            <h1>User interface</h1>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="autoLockUI">Auto-lock UI</ion-toggle>
+            </ion-item>
+
+            <ion-item *ngIf="dynmicFontsSupprted" lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="fixedFontSize">Fixed font size</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="showStatistics">Show statistics</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="enableRemoteInstall"
+                    >Open from remote sources</ion-toggle
+                >
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="featureChannelManagement">
+                <ion-toggle labelPlacement="fixed" formControlName="runPreviewChannel">Run preview version</ion-toggle>
+            </ion-item>
+
+            <h1 *ngIf="isIOS">Interface quirks</h1>
+
+            <ion-item lines="none" *ngIf="isIOS">
+                <ion-toggle labelPlacement="fixed" formControlName="dontRestrictFilePicker"
+                    >Don't restrict file picker</ion-toggle
+                >
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="isIndicatorFixApplicable">
+                <ion-select label="Fix iOS home indicator" formControlName="indicatorFixMode">
+                    <ion-select-option [value]="indicatorFixNone">Off</ion-select-option>
+                    <ion-select-option [value]="indicatorFixPortrait">Portrait</ion-select-option>
+                    <ion-select-option [value]="indicatorFixLandscape">Landscape</ion-select-option>
+                    <ion-select-option [value]="indicatorFixAll">Always</ion-select-option>
+                </ion-select>
+            </ion-item>
+
+            <ng-container *ngIf="showDebugOptions">
+                <h1>Debug</h1>
+
+                <ion-item lines="none">
+                    <ion-toggle labelPlacement="fixed" formControlName="snapshotIntegrityCheck"
+                        >Snapshot validation (slow)</ion-toggle
+                    >
+                </ion-item>
+            </ng-container>
+        </form>
+    </div>
+</ion-content>

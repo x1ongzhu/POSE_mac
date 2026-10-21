@@ -1,0 +1,16 @@
+<ion-header>
+    <ion-toolbar>
+        <ion-title>{{ title }}</ion-title>
+
+        <ion-buttons slot="primary">
+            <ion-button (click)="modalController.dismiss()">Close</ion-button>
+        </ion-buttons>
+    </ion-toolbar>
+</ion-header>
+
+<ion-content fullscreen>
+    <div class="loader" *ngIf="loading">
+        <ion-spinner></ion-spinner>
+    </div>
+    <markdown [src]="url" (load)="loading = false"></markdown>
+</ion-content>

@@ -1,0 +1,62 @@
+import { UarmSnapshot } from './Snapshot';
+import { RpcError, RpcResponse } from './rpc';
+
+export const enum ClientMessageType {
+    ready = 'ready',
+    rpcError = 'rpcError',
+    rpcSuccess = 'rpcSuccess',
+    timeslice = 'timeslice',
+    fatalError = 'fatalError',
+    snapshot = 'snapshot',
+    systemStateChanged = 'systemStateChanged',
+}
+
+export interface ClientMessageReady {
+    type: ClientMessageType.ready;
+}
+
+export type ClientMessageRpcError = RpcError & {
+    type: ClientMessageType.rpcError;
+};
+
+export type ClientMessageRpcSuccess = RpcResponse & {
+    type: ClientMessageType.rpcSuccess;
+};
+
+export interface ClientMessageTimeslice {
+    type: ClientMessageType.timeslice;
+
+    sizeSeconds: number;
+    lcdEnabled: boolean;
+    frame: ArrayBuffer | undefined;
+    firstDirtyLine: number;
+    lastDirtyLine: number;
+
+    currentIps: number;
+    currentIpsMax: number;
+}
+
+export interface ClientMessageFatalError {
+    type: ClientMessageType.fatalError;
+    error: string;
+}
+
+export interface ClientMessageSnapshot {
+    type: ClientMessageType.snapshot;
+    snapshot: UarmSnapshot;
+}
+
+export interface ClientMessageSystemStateChanged {
+    type: ClientMessageType.systemStateChanged;
+    uiInitialized: boolean;
+    osVersion: number | undefined;
+}
+
+export type ClientMessage =
+    | ClientMessageReady
+    | ClientMessageRpcError
+    | ClientMessageRpcSuccess
+    | ClientMessageTimeslice
+    | ClientMessageFatalError
+    | ClientMessageSnapshot
+    | ClientMessageSystemStateChanged;

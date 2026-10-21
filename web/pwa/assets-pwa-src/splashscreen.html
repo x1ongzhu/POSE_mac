@@ -1,0 +1,64 @@
+<html>
+
+<head>
+    <style>
+        img.dark {
+            display: none;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        img {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        @media (max-aspect-ratio: 4/3) {
+            img {
+                width: 30vw;
+            }
+        }
+
+        @media (min-aspect-ratio: 4/3) {
+            img {
+                height: 30vh;
+            }
+        }
+
+        body {
+            background: white;
+        }
+
+        @media (prefers-color-scheme:dark) {
+            body {
+                background: black;
+            }
+
+            img.light {
+                display: none;
+            }
+
+            img.dark {
+                display: block;
+                filter: invert();
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <img class="light" src="cp-palmblue-001.svg">
+        <img class="dark" src="cp-palmblue-001-bw.svg">
+    </div>
+</body>
+
+</html>

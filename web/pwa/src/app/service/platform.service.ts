@@ -1,0 +1,113 @@
+import { Injectable, OnDestroy } from '@angular/core';
+import { EventInterface } from 'microevent.ts';
+
+import { AppChannel } from '@pwa/model/AppChannel';
+
+import { LifecycleService } from './lifecycle.service';
+import { createNativeAppBackend } from './platform/factory';
+import { NetRpcResultPayload, PlatformBackend, SaveFileContext } from './platform/platform-backend';
+
+@Injectable({ providedIn: 'root' })
+export class PlatformService implements OnDestroy {
+    constructor(lifecycleService: LifecycleService) {
+        this.backend = createNativeAppBackend(lifecycleService);
+
+        if (this.backend.supportsChannelManagement()) {
+            void this.backend.getAppChannel().then((channel) => (this.appChannel = channel));
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__cpeReload = () => this.reload();
+    }
+
+    ngOnDestroy(): void {
+        this.backend.teardown();
+    }
+
+    netOpenSession(): Promise<number> {
+        return this.backend.netOpenSession();
+    }
+
+    netCloseSession(sessionId: number): Promise<void> {
+        return this.backend.netCloseSession(sessionId);
+    }
+
+    netDispatchRpc(sessionId: number, rpcData: ArrayLike<number>): Promise<boolean> {
+        return this.backend.netDispatchRpc(sessionId, rpcData);
+    }
+
+    clipboardRead(): Promise<string> {
+        return this.backend.clipboardRead();
+    }
+
+    clipboardWrite(data: string): Promise<void> {
+        return this.backend.clipboardWrite(data);
+    }
+
+    isResumeFromBackground(): boolean {
+        return this.backend.isResumeFromBackground();
+    }
+
+    setWorkerRegistered(workerRegistered: boolean): Promise<void> {
+        return this.backend.setWorkerRegistered(workerRegistered);
+    }
+
+    getWorkerFailed(): Promise<boolean> {
+        return this.backend.getWorkerFailed();
+    }
+
+    clearWorkerFailed(): void {
+        return this.backend.clearWorkerFailed();
+    }
+
+    get netRpcResult(): EventInterface<NetRpcResultPayload> {
+        return this.backend.netRpcResult;
+    }
+
+    reload(): void {
+        this.backend.reload();
+    }
+
+    getAppChannelSync(): AppChannel | undefined {
+        return this.appChannel;
+    }
+
+    getAppChannel(): Promise<AppChannel> {
+        return this.backend.getAppChannel();
+    }
+
+    switchAppChannel(channel: AppChannel): void {
+        this.backend.switchAppChannel(channel);
+    }
+
+    getAppVersion(): string | undefined {
+        return this.backend.getAppVersion();
+    }
+
+    getAppPlatform(): string | undefined {
+        return this.backend.getAppPlatform();
+    }
+
+    supportsNativeNetworkIntegration(): boolean {
+        return this.backend.supportsNativeNetworkIntegration();
+    }
+
+    supportsNativeClipboard(): boolean {
+        return this.backend.supportsNativeClipboard();
+    }
+
+    supportsChannelManagement(): boolean {
+        return this.backend.supportsChannelManagement();
+    }
+
+    saveFile(content: Uint8Array, name: string, context: SaveFileContext): Promise<void> {
+        return this.backend.saveFile(content, name, context);
+    }
+
+    needsPlatformSaveFile(): boolean {
+        return this.backend.needsPlatformSaveFile();
+    }
+
+    private backend: PlatformBackend;
+    private appChannel: AppChannel | undefined;
+}

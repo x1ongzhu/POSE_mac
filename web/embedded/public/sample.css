@@ -1,0 +1,19 @@
+body {
+    text-align: center;
+    background-color: #eee;
+}
+
+canvas {
+    width: 100%;
+    height: calc(100vh - 8em);
+    margin-bottom: 1em;
+}
+
+canvas:focus {
+    border: none;
+    outline: none;
+}
+
+a {
+    margin: 0 0.5em;
+}

@@ -1,0 +1,14 @@
+<ion-list>
+    <ion-item lines="full" button [detail]="false" (click)="onExport?.()" [disabled]="cardCount === 0">
+        <ion-icon name="share-outline" slot="end"></ion-icon>
+        Export
+    </ion-item>
+    <ion-item lines="full" button [detail]="false" (click)="onDelete?.()" [disabled]="cardCount === 0">
+        <ion-icon name="trash-outline" slot="end"></ion-icon>
+        Delete
+    </ion-item>
+    <ion-item lines="none" button [detail]="false" (click)="onHelp?.()">
+        <ion-icon name="help-outline" slot="end"></ion-icon>
+        Help
+    </ion-item>
+</ion-list>

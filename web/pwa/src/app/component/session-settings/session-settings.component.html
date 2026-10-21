@@ -1,0 +1,171 @@
+<ion-header>
+    <ion-toolbar>
+        <ion-title>Session settings</ion-title>
+
+        <ion-buttons slot="primary">
+            <ion-button (click)="save()" [disabled]="formGroup.invalid">Save</ion-button>
+        </ion-buttons>
+
+        <ion-buttons slot="secondary">
+            <ion-button (click)="onCancel()">Cancel</ion-button>
+        </ion-buttons>
+    </ion-toolbar>
+</ion-header>
+
+<ion-content fullscreen [class.engine-uarm]="isUarm" [class.engine-cloudpilot]="isCloudpilot">
+    <form [formGroup]="formGroup" (keydown.enter)="onEnter()">
+        <h1>Session</h1>
+
+        <ion-item lines="none">
+            <ion-input
+                label="Session name"
+                labelPlacement="stacked"
+                placeholder="Enter session name"
+                formControlName="name"
+            ></ion-input>
+        </ion-item>
+
+        <h1>Device</h1>
+
+        <ion-item lines="none">
+            <ion-select label="Device type" labelPlacement="stacked" formControlName="device">
+                <ion-select-option *ngFor="let device of deviceList" [value]="device[0]"
+                    >{{ device[1] }}
+                </ion-select-option>
+            </ion-select>
+        </ion-item>
+
+        <div class="horizontal-container" *ngIf="availableScreenSizes !== undefined || availableRamSizes !== undefined">
+            <ion-item lines="none" *ngIf="availableScreenSizes !== undefined">
+                <ion-select label="Screen size" labelPlacement="stacked" formControlName="screenSize">
+                    <ion-select-option *ngFor="let screenSize of availableScreenSizes" [value]="screenSize"
+                        >{{ screenSize }}
+                    </ion-select-option>
+                </ion-select>
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="availableRamSizes !== undefined">
+                <ion-select label="RAM size" labelPlacement="stacked" formControlName="ramSize">
+                    <ion-select-option *ngFor="let ramSize of availableRamSizes" [value]="ramSize"
+                        >{{ ramSize }}MB
+                    </ion-select-option>
+                </ion-select>
+            </ion-item>
+        </div>
+
+        @if (isUarm && selectNandSize !== undefined) {
+            <ion-item lines="none">
+                <div class="nand-container">
+                    <ion-input
+                        class="input-nand"
+                        label="NAND flash contents"
+                        labelPlacement="stacked"
+                        placeholder="blank"
+                        formControlName="nand"
+                        [readonly]="true"
+                        tabindex="-1"
+                        (click)="onNandClick()"
+                    ></ion-input>
+                    <ion-button (click)="onNandClearClick()" [disabled]="!formControlNand.value"> Clear </ion-button>
+                </div>
+            </ion-item>
+        }
+
+        @if (isUarm) {
+            <h1>Performance</h1>
+
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="disableAudioEmulation"
+                    >Disable audio emulation</ion-toggle
+                >
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-range
+                    label="{{ targetMipsLabel }}"
+                    labelPlacement="fixed"
+                    class="label-speed"
+                    min="20"
+                    max="300"
+                    step="1"
+                    snaps="true"
+                    ticks="false"
+                    formControlName="targetMips"
+                    (ionInput)="onTargetMipsDrag($event)"
+                    (ionKnobMoveEnd)="targetMipsTransient = undefined"
+                >
+                </ion-range>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-range
+                    label="{{ warnSlowdownThresholdLabel }}"
+                    labelPlacement="fixed"
+                    class="label-speed"
+                    min="0"
+                    max="100"
+                    step="1"
+                    snaps="true"
+                    ticks="false"
+                    formControlName="warnSlowdownThreshold"
+                    (ionInput)="onWarnSlowdownThresholdDrag($event)"
+                    (ionKnobMoveEnd)="warnSlowdownThresholdTransient = undefined"
+                >
+                </ion-range>
+            </ion-item>
+
+            <ion-item lines="none">
+                <ion-range
+                    label="{{ maxHostLoadLabel }}"
+                    labelPlacement="fixed"
+                    class="label-speed"
+                    min="10"
+                    max="100"
+                    step="1"
+                    snaps="true"
+                    ticks="false"
+                    formControlName="maxHostLoad"
+                    (ionInput)="onMaxHostLoadDrag($event)"
+                    (ionKnobMoveEnd)="maxHostLoadTransient = undefined"
+                >
+                </ion-range>
+            </ion-item>
+        }
+
+        @if (isCloudpilot) {
+            <ion-item lines="none">
+                <ion-range
+                    label="{{ speedLabel }}"
+                    labelPlacement="fixed"
+                    class="label-speed"
+                    min="-4"
+                    max="4"
+                    step="0.25"
+                    snaps="true"
+                    ticks="false"
+                    formControlName="speed"
+                    (ionInput)="onSpeedDrag($event)"
+                    (ionKnobMoveEnd)="speedTransient = undefined"
+                >
+                </ion-range>
+            </ion-item>
+        }
+
+        @if (isCloudpilot) {
+            <h1>Hotsync</h1>
+            <ion-item lines="none">
+                <ion-toggle labelPlacement="fixed" formControlName="manageHotsyncName">Manage hotsync name</ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none" *ngIf="showHotsyncNameInput">
+                <ion-input
+                    label="Hotsync name"
+                    labelPlacement="stacked"
+                    placeholder="Enter hotsync name"
+                    formControlName="hotsyncName"
+                    maxlength="40"
+                ></ion-input>
+            </ion-item>
+        }
+    </form>
+</ion-content>

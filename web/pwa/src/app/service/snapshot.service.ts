@@ -1,0 +1,397 @@
+import { Injectable, NgZone } from '@angular/core';
+import { Snapshot, SnapshotContainer } from '@common/engine/Snapshot';
+import { DynamicTimeout } from '@common/helper/dynamicTimeout';
+import { Event } from 'microevent.ts';
+
+import { MemoryMetadata } from '@pwa//model/MemoryMetadata';
+import { Session } from '@pwa/model/Session';
+import { StorageCard } from '@pwa/model/StorageCard';
+
+import { AlertService } from './alert.service';
+import { ErrorService } from './error.service';
+import { LoaderService } from './loader.service';
+import { E_LOCK_LOST, StorageService } from './storage.service';
+import {
+    OBJECT_STORE_LOCK,
+    OBJECT_STORE_MEMORY,
+    OBJECT_STORE_MEMORY_META,
+    OBJECT_STORE_NAND,
+    OBJECT_STORE_STATE,
+    OBJECT_STORE_STORAGE,
+    OBJECT_STORE_STORAGE_CARD,
+} from './storage/constants';
+import { complete, compressPage, compressPage8 } from './storage/util';
+
+declare global {
+    interface IDBDatabase {
+        transaction(
+            storeNames: string | string[],
+            mode?: IDBTransactionMode,
+            options?: { durability?: 'default' | 'strict' | 'relaxed' },
+        ): IDBTransaction;
+    }
+}
+
+class ClonePool {
+    clear(): void {
+        this.pages = [];
+        this.nextPage = -1;
+    }
+
+    reset(): void {
+        this.nextPage = this.pages.length - 1;
+    }
+
+    duplicate(page: number | Uint32Array): typeof page {
+        if (typeof page === 'number') return page;
+
+        if (this.nextPage >= 0) {
+            const clone = this.pages[this.nextPage--];
+            clone.set(page);
+
+            return clone;
+        }
+
+        const clone = page.slice();
+        this.pages.push(clone);
+
+        return clone;
+    }
+
+    private pages: Array<Uint32Array> = [];
+    private nextPage = -1;
+}
+
+const STATIC_TIMEOUT_MSEC = 500;
+const TIMEOUT_DELTA_MSEC_PER_KB_DEFAULT = 0.5;
+const TIMEOUT_DELTA_MSEC_PER_KB_MAX = 8 * TIMEOUT_DELTA_MSEC_PER_KB_DEFAULT;
+const MAX_CONSECUTIVE_ERRORS = 3;
+
+function snapshotSizeBytes(snapshot: Snapshot | undefined): number {
+    return snapshot ? snapshot.pageSize * snapshot.pageCount * 4 : 0;
+}
+
+@Injectable({
+    providedIn: 'root',
+})
+export class SnapshotService {
+    constructor(
+        private storageService: StorageService,
+        private errorService: ErrorService,
+        private alertService: AlertService,
+        private loaderService: LoaderService,
+        private ngZone: NgZone,
+    ) {}
+
+    async initialize(session: Session): Promise<void> {
+        if (this.errorService.hasFatalError()) return;
+
+        if (this.snapshotInProgress) {
+            this.errorService.fatalBug('Attempt to reinitialize snapshots while snapshot is still in progress');
+            return;
+        }
+
+        this.sessionId = session.id;
+        this.clonePoolMemory.clear();
+        this.clonePoolNand.clear();
+        this.clonePoolStorage.clear();
+        this.savestateClone = undefined;
+
+        this.db = await this.storageService.getDb();
+    }
+
+    storeSnapshot = (snapshotContainer: SnapshotContainer, sessionId: number): Promise<void> =>
+        this.ngZone.runOutsideAngular(async () => {
+            try {
+                if (this.snapshotInProgress) {
+                    throw new Error('cannot happen: snapshot while snapshot is in progress');
+                }
+
+                if (this.errorService.hasFatalError()) {
+                    throw new Error('refusing to store snapshot after fatal error');
+                }
+
+                this.snapshotInProgress = true;
+
+                // there is not way to reset the sessionId while the snapshot is in progress, so if the
+                // ID matches now we can safely assume that it will still match the snapshot when we store
+                // it later.
+                if (sessionId !== this.sessionId) {
+                    throw new Error(`bad snapshot: session ID mismatch: ${this.sessionId} vs ${sessionId}`);
+                }
+            } catch (e) {
+                snapshotContainer.release(false, 0, 0);
+                throw e;
+            }
+
+            try {
+                await this.storeSnapshotUnguarded(snapshotContainer);
+            } finally {
+                this.snapshotInProgress = false;
+            }
+        });
+
+    triggerSnapshot(): Promise<void> {
+        return new Promise((resolve, reject) =>
+            this.snapshotRequestEvent.dispatch((error) => {
+                if (error !== undefined) reject(error);
+                else resolve();
+            }),
+        );
+    }
+
+    private async storeSnapshotUnguarded(snapshotContainer: SnapshotContainer): Promise<void> {
+        this.timeBlocking = this.timeBackground = 0;
+        this.timeoutDeltaMsecPerKb = this.timeoutDeltaMsecPerKbStart;
+        let success = false;
+
+        try {
+            success = await this.storeSnapshotWithRetry(snapshotContainer);
+        } finally {
+            snapshotContainer.release(success, this.timeBlocking, this.timeBackground);
+        }
+    }
+
+    private async storeSnapshotWithRetry(snapshotContainer: SnapshotContainer): Promise<boolean> {
+        while (true) {
+            try {
+                const success = await this.attemptToStoreSnapshot(snapshotContainer);
+                this.consecutiveErrorCount = 0;
+
+                this.hideLoader();
+
+                return success;
+            } catch (e) {
+                this.hideLoader();
+
+                if (e instanceof DynamicTimeout) {
+                    if (e.isTainted()) continue;
+
+                    console.log(`snapshot timeout expired after ${e.getAccumulatedTimeout()} msec`);
+
+                    if (this.timeoutDeltaMsecPerKb > TIMEOUT_DELTA_MSEC_PER_KB_DEFAULT) {
+                        await this.alertService.snapshotTimeout();
+                        await this.showLoader();
+                    }
+
+                    this.timeoutDeltaMsecPerKb *= 2;
+                    this.timeoutDeltaMsecPerKbStart = Math.min(
+                        2 * this.timeoutDeltaMsecPerKbStart,
+                        TIMEOUT_DELTA_MSEC_PER_KB_MAX,
+                    );
+
+                    continue;
+                }
+
+                console.error('snapshot error', e);
+
+                if (e === E_LOCK_LOST) {
+                    this.errorService.fatalPageLockLost();
+
+                    throw e;
+                }
+
+                if (++this.consecutiveErrorCount > MAX_CONSECUTIVE_ERRORS) {
+                    this.errorService.fatalIDBDead();
+
+                    throw e;
+                }
+
+                await snapshotContainer.refresh();
+            }
+        }
+    }
+
+    private async attemptToStoreSnapshot(snapshotContainer: SnapshotContainer): Promise<boolean> {
+        const tx = this.db.transaction(
+            [
+                OBJECT_STORE_MEMORY,
+                OBJECT_STORE_MEMORY_META,
+                OBJECT_STORE_STATE,
+                OBJECT_STORE_STORAGE,
+                OBJECT_STORE_STORAGE_CARD,
+                OBJECT_STORE_NAND,
+                OBJECT_STORE_LOCK,
+            ],
+            'readwrite',
+            {
+                durability: 'relaxed',
+            },
+        );
+
+        await this.storageService.acquireLock(tx);
+
+        const storageCards: Array<StorageCard> = await complete(tx.objectStore(OBJECT_STORE_STORAGE_CARD).getAll());
+
+        if (!snapshotContainer.materialize()) return false;
+
+        return new Promise<boolean>((resolve, reject) => {
+            let isTimeout = false;
+
+            let timestampBackgroundStart = 0;
+
+            this.clonePoolMemory.reset();
+            this.clonePoolNand.reset();
+            this.clonePoolStorage.reset();
+
+            const snapshotMemory = snapshotContainer.getSnapshotMemory();
+            const snapshotNand = snapshotContainer.getSnapshotNand();
+            const snapshotStorage = snapshotContainer.getSnapshotStorage();
+            const savestate = snapshotContainer.getSavestate();
+            const storageKey = snapshotContainer.getStorageKey();
+            const memoryCrc = snapshotContainer.getMemoryCrc();
+
+            const totalSizeBytes =
+                snapshotSizeBytes(snapshotMemory) +
+                snapshotSizeBytes(snapshotNand) +
+                snapshotSizeBytes(snapshotStorage) +
+                (savestate?.length ?? 0);
+
+            const timeoutMsec = STATIC_TIMEOUT_MSEC + ((this.timeoutDeltaMsecPerKb * totalSizeBytes) >>> 10);
+            const timeout = new DynamicTimeout(timeoutMsec, () => {
+                isTimeout = true;
+                reject(timeout);
+
+                try {
+                    tx.abort();
+                    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                } catch (e) {
+                    // this most likely means the transaction is already aborted, so never mind
+                }
+            });
+
+            tx.oncomplete = () => {
+                timeout.cancel();
+                this.timeBackground += performance.now() - timestampBackgroundStart;
+
+                resolve(true);
+            };
+
+            tx.onerror = () => {
+                timeout.cancel();
+                this.timeBackground += performance.now() - timestampBackgroundStart;
+
+                reject(new Error(tx.error?.message));
+            };
+
+            try {
+                const timestampBlockingStart = performance.now();
+
+                if (snapshotMemory) this.saveSnapshotMemory(tx, snapshotMemory, memoryCrc);
+
+                if (snapshotNand) {
+                    this.saveSnapshotOther(tx, snapshotNand, this.sessionId, OBJECT_STORE_NAND, this.clonePoolNand);
+                }
+
+                if (snapshotStorage && storageKey !== undefined) {
+                    const storageCard = storageCards.find((card) => card.storageId === storageKey);
+                    if (!storageCard) throw new Error(`no storage card with key ${storageKey}`);
+
+                    this.saveSnapshotOther(
+                        tx,
+                        snapshotStorage,
+                        storageCard.id,
+                        OBJECT_STORE_STORAGE,
+                        this.clonePoolStorage,
+                    );
+                }
+
+                this.saveSavestate(tx, savestate);
+
+                timeout.start();
+
+                this.timeBlocking += performance.now() - timestampBlockingStart;
+                timestampBackgroundStart = performance.now();
+            } catch (e) {
+                if (!isTimeout) {
+                    timeout.cancel();
+                    tx.abort();
+                }
+
+                throw e;
+            }
+        });
+    }
+
+    private saveSnapshotMemory(tx: IDBTransaction, snapshot: Snapshot, crc: number | undefined) {
+        const { pageCount, pageSize, offsets, pageData, pageCountTotal, pages } = snapshot;
+
+        const objectStore = tx.objectStore(OBJECT_STORE_MEMORY);
+        const objectStoreMeta = tx.objectStore(OBJECT_STORE_MEMORY_META);
+
+        const metadata: MemoryMetadata = {
+            sessionId: this.sessionId,
+            totalSize: (pageCountTotal * pageSize) << 2,
+            crc32: crc,
+        };
+
+        objectStoreMeta.put(metadata);
+
+        for (let iPage = 0; iPage < pageCount; iPage++) {
+            const page = pageData.subarray(offsets[iPage], offsets[iPage] + pageSize);
+            const compressedPage = this.clonePoolMemory.duplicate(compressPage8(page));
+
+            objectStore.put(compressedPage, [this.sessionId, pages[iPage]]);
+        }
+    }
+
+    private saveSnapshotOther(tx: IDBTransaction, snapshot: Snapshot, id: number, store: string, clonePool: ClonePool) {
+        const { pageCount, pageSize, offsets, pageData, pages } = snapshot;
+
+        const objectStore = tx.objectStore(store);
+
+        for (let iPage = 0; iPage < pageCount; iPage++) {
+            const page = pageData.subarray(offsets[iPage], offsets[iPage] + pageSize);
+            const compressedPage = clonePool.duplicate(compressPage(page));
+
+            objectStore.put(compressedPage, [id, pages[iPage]]);
+        }
+    }
+
+    private saveSavestate(tx: IDBTransaction, savestate: Uint8Array | undefined) {
+        const objectStore = tx.objectStore(OBJECT_STORE_STATE);
+
+        if (savestate) {
+            if (!this.savestateClone) {
+                this.savestateClone = savestate.slice();
+            } else {
+                this.savestateClone.set(savestate);
+            }
+
+            objectStore.put(this.savestateClone, this.sessionId);
+        } else {
+            objectStore.delete(this.sessionId);
+        }
+    }
+
+    private async showLoader(): Promise<void> {
+        if (this.loaderHandle !== undefined) return;
+
+        this.loaderHandle = await this.loaderService.add('Saving...');
+    }
+
+    private hideLoader(): void {
+        if (this.loaderHandle === undefined) return;
+
+        this.loaderService.resolve(this.loaderHandle);
+        this.loaderHandle = undefined;
+    }
+
+    snapshotRequestEvent = new Event<(error?: Error) => void>();
+
+    private sessionId = -1;
+    private consecutiveErrorCount = 0;
+    private timeoutDeltaMsecPerKbStart = TIMEOUT_DELTA_MSEC_PER_KB_DEFAULT;
+    private timeoutDeltaMsecPerKb = TIMEOUT_DELTA_MSEC_PER_KB_DEFAULT;
+    private timeBlocking = 0;
+    private timeBackground = 0;
+    private snapshotInProgress = false;
+    private loaderHandle: number | undefined;
+
+    private clonePoolMemory = new ClonePool();
+    private clonePoolNand = new ClonePool();
+    private clonePoolStorage = new ClonePool();
+    private savestateClone: Uint8Array | undefined;
+
+    private db!: IDBDatabase;
+}

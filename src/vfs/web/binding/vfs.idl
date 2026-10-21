@@ -1,0 +1,114 @@
+interface FileEntry {
+    [Const] DOMString GetName();
+    boolean IsDirectory();
+    long GetSize();
+    long GetModifiedTS();
+    long GetAttributes();
+};
+
+interface Vfs {
+    void Vfs();
+
+    VoidPtr Malloc(long size);
+    void Free(VoidPtr buffer);
+    VoidPtr Nullptr();
+
+    void AllocateImage(long blockCount);
+    boolean MountImage(long slot);
+    void UnmountImage(long slot);
+    void SwitchSlot(long slot);
+
+    long GetPendingImageSize();
+    long GetSize(long slot);
+    VoidPtr GetPendingImage();
+    VoidPtr GetImage(long slot);
+    VoidPtr GetDirtyPages(long slot);
+
+    long RenameFile([Const] DOMString from, [Const] DOMString to);
+    long ChmodFile([Const] DOMString path, long attr, long mask);
+    long StatFile([Const] DOMString path);
+    long UnlinkFile([Const] DOMString path);
+    long Mkdir([Const] DOMString path);
+
+    [ Const, Ref ] FileEntry GetEntry();
+
+    long BytesFree(long slot);
+    long BytesTotal(long slot);
+
+    boolean ReadFile([Const] DOMString path);
+    long GetCurrentFileSize();
+    VoidPtr GetCurrentFileContent();
+    void ReleaseCurrentFile();
+
+    long WriteFile([Const] DOMString path, long size, [Const] VoidPtr data);
+};
+
+interface ReaddirContext {
+    void ReaddirContext([Const] DOMString path);
+
+    long Next();
+
+    [ Const, Ref ] FileEntry GetEntry();
+
+    long GetStatus();
+    long GetError();
+    [Const] DOMString GetErrorDescription();
+};
+
+interface ExportZipContext {
+    void ExportZipContext([Const] DOMString path, long timesliceMilliseconds);
+
+    [Ref] ExportZipContext AddFile([Const] DOMString path);
+    [Ref] ExportZipContext AddDirectory([Const] DOMString path);
+
+    long Continue();
+    long GetState();
+
+    VoidPtr GetZipContent();
+    long GetZipSize();
+
+    [Const] DOMString GetErrorItem();
+};
+
+interface DeleteRecursiveContext {
+    void DeleteRecursiveContext(long timesliceMilliseconds);
+
+    [Ref] DeleteRecursiveContext AddFile([Const] DOMString path);
+
+    long Continue();
+    long GetState();
+
+    [Const] DOMString GetFailingPath();
+};
+
+interface UnzipContext {
+    void UnzipContext(long timesliceMilliseconds, [Const] DOMString destination, VoidPtr data,
+                      long size);
+
+    long GetState();
+    long Continue();
+    long ContinueWithOverwrite();
+
+    [Const] DOMString GetCurrentEntry();
+    [Const] DOMString GetCollisionPath();
+
+    long GetEntriesTotal();
+    long GetEntriesSuccess();
+};
+
+interface PasteContext {
+    void PasteContext(
+        long timesliceMilliseconds, [Const] DOMString destination, [Const] DOMString prefix);
+
+    [Ref] PasteContext AddFile([Const] DOMString path);
+    [Ref] PasteContext SetDeleteAfterCopy(boolean deleteAfterCopy);
+
+    long GetState();
+    long Continue();
+    long ContinueWithOverwrite();
+
+    [Const] DOMString GetCurrentEntry();
+    [Const] DOMString GetCollisionPath();
+
+    long GetEntriesSuccess();
+};
