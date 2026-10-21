@@ -371,6 +371,12 @@ final class PalmDisplayView: NSView {
             else { super.keyDown(with: event) }
             return
         }
+        // AppKit reports Backspace as DEL (0x7f), while Palm OS expects chrBackspace (0x08).
+        // The forward Delete key has a non-Latin-1 character and otherwise gets dropped here.
+        if event.keyCode == 51 || event.keyCode == 117 {
+            model?.key(0x08)
+            return
+        }
         let input = [event.characters, event.charactersIgnoringModifiers]
             .compactMap { $0 }
             .first { !$0.isEmpty && $0.unicodeScalars.allSatisfy { $0.value < 256 } }
