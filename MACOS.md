@@ -4,7 +4,7 @@
 
 ## Xcode 项目
 
-用 Xcode 打开 `MacApp/PalmOS.xcodeproj`，选择 `CloudpilotMac` scheme 与 “My Mac”，即可构建和运行完整 App。构建阶段会编译 C++ 核心、嵌入动态库与随附的 ROM、浏览器，并编译 `Resources/PalmOS.icon` 的 Icon Composer 分层图标。首次构建前需安装 Xcode Command Line Tools 和以下依赖：
+用 Xcode 打开 `MacApp/PalmOS.xcodeproj`，选择 `CloudpilotMac` scheme 与 “My Mac”，即可构建和运行完整 App。构建阶段会编译 C++ 核心、嵌入动态库与随附的 ROM、浏览器，并编译 `Resources/PalmOS.icon` 的 Icon Composer 分层图标。首次构建前需安装含 macOS 27 SDK 的 Xcode 和以下依赖：
 
 ```sh
 brew install sdl2 sdl2_image readline curl
@@ -16,14 +16,14 @@ brew install sdl2 sdl2_image readline curl
 
 ## 制作开箱即用的 App
 
-在构建机上安装 Xcode Command Line Tools、Homebrew 和 Cloudpilot 核心依赖后，在仓库根目录运行：
+在构建机上安装含 macOS 27 SDK 的 Xcode、Homebrew 和 Cloudpilot 核心依赖后，在仓库根目录运行：
 
 ```sh
 brew install sdl2 sdl2_image readline curl
 ./tools/package-macos.sh
 ```
 
-成品位于 `dist/Palm OS.app`。脚本嵌入模拟器核心、所需动态库与 Palm m515 ROM。启动后可直接运行，也可导入其他 ROM；应用按原项目的 ROM 兼容规则自动识别对应设备，设备不可手动更改。模拟器会每分钟及停止时将会话保存至用户的 Application Support 目录。
+成品位于 `dist/Palm OS.app`。打包脚本直接复制 Xcode 项目的 Release 构建产物，确保分发版与 Xcode 中运行的 App 使用同一套 macOS 27 SDK 构建设置和原生工具栏外观。构建过程嵌入模拟器核心、所需动态库与 Palm m515 ROM。启动后可直接运行，也可导入其他 ROM；应用按原项目的 ROM 兼容规则自动识别对应设备，设备不可手动更改。模拟器会每分钟及停止时将会话保存至用户的 Application Support 目录。
 
 ## 从命令行启动
 
