@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -11,6 +12,8 @@ struct CloudpilotMacApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {
+                Button("新建窗口", action: openNewWindow)
+                    .keyboardShortcut("n")
                 Button("打开 ROM…", action: model.chooseROM)
                     .keyboardShortcut("o")
             }
@@ -32,6 +35,20 @@ struct CloudpilotMacApp: App {
                 Button("安装 PRC/PDB…", action: model.installDatabases)
                     .keyboardShortcut("i")
                     .disabled(!model.isRunning)
+            }
+        }
+    }
+
+    private func openNewWindow() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.activates = true
+        configuration.arguments = ["--new-window"]
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, error in
+            if let error {
+                DispatchQueue.main.async {
+                    model.message = "无法新建窗口：\(error.localizedDescription)"
+                }
             }
         }
     }

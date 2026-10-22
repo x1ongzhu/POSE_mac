@@ -50,6 +50,8 @@ open -n "dist/Palm OS.app" --args --rom "/absolute/path/to/Palm.rom" --install "
 
 也可从 Finder 将 ROM 或多个 PRC/PDB 直接拖到主窗口。ROM 会自动识别设备并启动；PRC/PDB 安装到当前设备，若设备未启动则先启动，待 Palm OS 初始化完成后安装。同一次拖放可以包含一个 ROM 和多个 PRC/PDB。
 
+按 ⌘N 可新建模拟器窗口。每个窗口由独立的 App 进程运行，可同时模拟不同设备；新窗口为内置 ROM 创建独立会话。若尝试在两个窗口中打开同一会话镜像，后打开的窗口会提示该会话已在运行，防止并发写入。
+
 ## 单独运行 SwiftUI 开发版
 
 ```sh

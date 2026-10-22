@@ -6,6 +6,7 @@ import Foundation
 private struct LaunchOptions {
     let rom: URL?
     let databases: [URL]
+    let newWindow: Bool
 
     var shouldStart: Bool { rom != nil || !databases.isEmpty }
 
@@ -20,6 +21,7 @@ private struct LaunchOptions {
     static func parse(_ arguments: [String]) throws -> LaunchOptions {
         var rom: URL?
         var databases: [URL] = []
+        var newWindow = false
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
@@ -27,6 +29,11 @@ private struct LaunchOptions {
             if argument == "--help" || argument == "-h" {
                 print(usage)
                 exit(EXIT_SUCCESS)
+            }
+            if argument == "--new-window" {
+                newWindow = true
+                index += 1
+                continue
             }
             let flag = String(argument.prefix(while: { $0 != "=" }))
             guard ["--rom", "--install", "--app"].contains(flag) else {
@@ -60,10 +67,38 @@ private struct LaunchOptions {
             }
             index += 1
         }
-        return LaunchOptions(rom: rom, databases: databases)
+        return LaunchOptions(rom: rom, databases: databases, newWindow: newWindow)
     }
 
     struct LaunchError: LocalizedError {
+        let detail: String
+        init(_ detail: String) { self.detail = detail }
+        var errorDescription: String? { detail }
+    }
+}
+
+private final class SessionLock {
+    private let descriptor: Int32
+
+    init(for session: URL) throws {
+        let path = session.path + ".lock"
+        let fd = Darwin.open(path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
+        guard fd >= 0 else {
+            throw LockError("无法锁定会话：\(session.lastPathComponent)")
+        }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+            Darwin.close(fd)
+            throw LockError("此会话已在另一个窗口中运行：\(session.lastPathComponent)")
+        }
+        descriptor = fd
+    }
+
+    deinit {
+        flock(descriptor, LOCK_UN)
+        Darwin.close(descriptor)
+    }
+
+    private struct LockError: LocalizedError {
         let detail: String
         init(_ detail: String) { self.detail = detail }
         var errorDescription: String? { detail }
@@ -130,6 +165,8 @@ final class EmulatorModel: ObservableObject {
     private var core: EmbeddedCore?
     private var timer: Timer?
     private var activeSessionURL: URL?
+    private var sessionLock: SessionLock?
+    private let windowSessionID: String?
     private var pendingBrowserInstall = false
     private var pendingInstallations: [URL] = []
     private var commandLineStartPending = false
@@ -144,6 +181,7 @@ final class EmulatorModel: ObservableObject {
             fputs("CloudpilotMac: \(error.localizedDescription)\n", stderr)
             exit(EX_USAGE)
         }
+        windowSessionID = options.newWindow ? UUID().uuidString : nil
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Palm-m515-4.1-en.rom"),
            FileManager.default.fileExists(atPath: bundled.path) {
             if let device = try? EmbeddedCore().detectDevice(rom: bundled) {
@@ -346,9 +384,11 @@ final class EmulatorModel: ObservableObject {
         do {
             let destination = supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
                 .appendingPathComponent("\(detectedDevice ?? "Palm")-\(UUID().uuidString.prefix(8)).img")
+            let newLock = try SessionLock(for: destination)
             try FileManager.default.copyItem(at: activeSessionURL, to: destination)
             selectedSessionURL = destination
             self.activeSessionURL = destination
+            sessionLock = newLock
             if let mountedCardURL {
                 UserDefaults.standard.set(mountedCardURL.path, forKey: "card:\(destination.path)")
             }
@@ -496,6 +536,7 @@ final class EmulatorModel: ObservableObject {
         do {
             let core = try EmbeddedCore()
             let sessionURL = try selectedSessionURL ?? sessionFile(for: romURL, device: detectedDevice)
+            let lock = try SessionLock(for: sessionURL)
             let existingSession = FileManager.default.fileExists(atPath: sessionURL.path)
             let image = existingSession ? sessionURL : romURL
             if mountedCardURL == nil,
@@ -508,6 +549,7 @@ final class EmulatorModel: ObservableObject {
             pendingBrowserInstall = !existingSession && selectedSessionURL == nil
                 && romURL.lastPathComponent == "Palm-m515-4.1-en.rom"
             self.core = core
+            sessionLock = lock
             isRunning = true
             message = "Palm OS 正在运行。"
             if let mountedCardURL, !core.mountCard(mountedCardURL) {
@@ -557,6 +599,7 @@ final class EmulatorModel: ObservableObject {
         if let core, let mountedCardURL { _ = core.saveCard(to: mountedCardURL); _ = core.unmountCard() }
         core?.stop()
         core = nil
+        sessionLock = nil
         (displayView as? PalmDisplayView)?.clear()
         activeSessionURL = nil
         pendingBrowserInstall = false
@@ -572,7 +615,8 @@ final class EmulatorModel: ObservableObject {
             .map { String(format: "%02x", $0) }.joined()
         let root = supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        return root.appendingPathComponent("\(device)-\(digest).img")
+        let suffix = windowSessionID.map { "-\($0)" } ?? ""
+        return root.appendingPathComponent("\(device)-\(digest)\(suffix).img")
     }
 
     private func installBundledBrowser(using core: EmbeddedCore) {
