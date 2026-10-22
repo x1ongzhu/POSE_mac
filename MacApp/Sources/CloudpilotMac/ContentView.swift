@@ -306,11 +306,14 @@ private struct EmulatorDisplay: NSViewRepresentable {
     }
 }
 
-final class PalmDisplayView: NSView {
+final class PalmDisplayView: NSView, NSTextInputClient {
     weak var model: EmulatorModel?
     private var imageWidth = 320
     private var imageHeight = 440
     private var currentImage: CGImage?
+    private var markedText = NSAttributedString(string: "")
+    private var markedSelection = NSRange(location: 0, length: 0)
+    private var insertedTextForCurrentKey = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -321,6 +324,11 @@ final class PalmDisplayView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        model?.startFromCommandLineIfNeeded()
+    }
 
     func show(_ data: Data, width: Int, height: Int, pitch: Int) {
         guard let provider = CGDataProvider(data: data as CFData),
@@ -371,16 +379,25 @@ final class PalmDisplayView: NSView {
             else { super.keyDown(with: event) }
             return
         }
-        // AppKit reports Backspace as DEL (0x7f), while Palm OS expects chrBackspace (0x08).
-        // The forward Delete key has a non-Latin-1 character and otherwise gets dropped here.
-        if event.keyCode == 51 || event.keyCode == 117 {
-            model?.key(0x08)
+        insertedTextForCurrentKey = false
+        if hasMarkedText() {
+            _ = inputContext?.handleEvent(event)
             return
         }
-        let input = [event.characters, event.charactersIgnoringModifiers]
-            .compactMap { $0 }
-            .first { !$0.isEmpty && $0.unicodeScalars.allSatisfy { $0.value < 256 } }
-        if let input { sendText(input) }
+        switch event.keyCode {
+        case 51, 117: model?.key(0x08); return // Backspace and forward Delete
+        case 36, 76: model?.key(0x0A); return // Return and keypad Enter
+        case 48: model?.key(0x09); return // Tab
+        case 123: model?.key(0x1C); return // Left
+        case 124: model?.key(0x1D); return // Right
+        case 125: model?.key(0x1F); return // Down
+        case 126: model?.key(0x1E); return // Up
+        default: break
+        }
+        _ = inputContext?.handleEvent(event)
+        if insertedTextForCurrentKey || hasMarkedText() { return }
+        if let input = event.characters, sendText(input) { return }
+        if let input = event.charactersIgnoringModifiers { sendText(input) }
     }
 
     @objc func paste(_ sender: Any?) {
@@ -388,9 +405,72 @@ final class PalmDisplayView: NSView {
         sendText(text)
     }
 
-    private func sendText(_ text: String) {
-        for scalar in text.unicodeScalars where scalar.value < 256 {
-            model?.key(Int(scalar.value))
+    @discardableResult private func sendText(_ text: String) -> Bool {
+        var sent = false
+        for scalar in text.unicodeScalars {
+            let code = scalar.value
+            let replacement: String
+            switch code {
+            case 0xFF01...0xFF5E: replacement = String(UnicodeScalar(code - 0xFEE0)!)
+            case 0x3000: replacement = " "
+            case 0x3001: replacement = ","
+            case 0x3002, 0x00B7, 0x30FB: replacement = "."
+            case 0x2018, 0x2019, 0x300C, 0x300D: replacement = "'"
+            case 0x201C, 0x201D: replacement = "\""
+            case 0x2013, 0x2014, 0x2212: replacement = "-"
+            case 0x2026: replacement = "..."
+            case 0x300A: replacement = "<"
+            case 0x300B: replacement = ">"
+            case 0x3010: replacement = "["
+            case 0x3011: replacement = "]"
+            default: replacement = code < 256 ? String(scalar) : ""
+            }
+            for character in replacement.unicodeScalars {
+                model?.key(Int(character.value))
+                sent = true
+            }
+        }
+        return sent
+    }
+
+    func hasMarkedText() -> Bool { markedText.length > 0 }
+    func markedRange() -> NSRange {
+        hasMarkedText() ? NSRange(location: 0, length: markedText.length) : NSRange(location: NSNotFound, length: 0)
+    }
+    func selectedRange() -> NSRange { markedSelection }
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        let text = (string as? NSAttributedString) ?? NSAttributedString(string: string as? String ?? "")
+        markedText = text
+        markedSelection = selectedRange
+    }
+    func unmarkText() { markedText = NSAttributedString(string: "") }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        guard range.location != NSNotFound, NSMaxRange(range) <= markedText.length else { return nil }
+        actualRange?.pointee = range
+        return markedText.attributedSubstring(from: range)
+    }
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        insertedTextForCurrentKey = true
+        unmarkText()
+        sendText((string as? NSAttributedString)?.string ?? (string as? String ?? ""))
+    }
+    func characterIndex(for point: NSPoint) -> Int { 0 }
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        actualRange?.pointee = range
+        let anchor = NSRect(x: bounds.midX, y: bounds.midY, width: 1, height: 20)
+        return window?.convertToScreen(convert(anchor, to: nil)) ?? anchor
+    }
+    override func doCommand(by selector: Selector) {
+        switch NSStringFromSelector(selector) {
+        case "deleteBackward:", "deleteForward:": model?.key(0x08)
+        case "insertNewline:", "insertNewlineIgnoringFieldEditor:": model?.key(0x0A)
+        case "insertTab:", "insertBacktab:": model?.key(0x09)
+        case "moveLeft:": model?.key(0x1C)
+        case "moveRight:": model?.key(0x1D)
+        case "moveDown:": model?.key(0x1F)
+        case "moveUp:": model?.key(0x1E)
+        default: break
         }
     }
 }

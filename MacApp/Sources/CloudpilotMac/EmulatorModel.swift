@@ -3,6 +3,73 @@ import CryptoKit
 import Darwin
 import Foundation
 
+private struct LaunchOptions {
+    let rom: URL?
+    let databases: [URL]
+
+    var shouldStart: Bool { rom != nil || !databases.isEmpty }
+
+    static let usage = """
+    用法：CloudpilotMac [--rom ROM文件] [--install PRC或PDB文件 ...]
+      --rom PATH       启动指定 ROM，自动识别设备
+      --install PATH   启动后安装 PRC/PDB，可重复指定；--app 为别名
+      --help           显示此帮助
+    未指定 ROM 时使用应用内置 ROM。路径可为绝对路径或相对于当前目录。
+    """
+
+    static func parse(_ arguments: [String]) throws -> LaunchOptions {
+        var rom: URL?
+        var databases: [URL] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            if argument.hasPrefix("-psn_") { index += 1; continue }
+            if argument == "--help" || argument == "-h" {
+                print(usage)
+                exit(EXIT_SUCCESS)
+            }
+            let flag = String(argument.prefix(while: { $0 != "=" }))
+            guard ["--rom", "--install", "--app"].contains(flag) else {
+                throw LaunchError("未知参数：\(argument)\n\(usage)")
+            }
+            let value: String
+            if argument.contains("=") {
+                value = String(argument.dropFirst(flag.count + 1))
+            } else {
+                index += 1
+                guard index < arguments.count, !arguments[index].hasPrefix("--") else {
+                    throw LaunchError("\(flag) 缺少文件路径。\n\(usage)")
+                }
+                value = arguments[index]
+            }
+            guard !value.isEmpty else { throw LaunchError("\(flag) 缺少文件路径。") }
+            let expanded = (value as NSString).expandingTildeInPath
+            let url = URL(fileURLWithPath: expanded).standardizedFileURL
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+                throw LaunchError("文件不存在：\(url.path)")
+            }
+            if flag == "--rom" {
+                guard rom == nil else { throw LaunchError("--rom 只能指定一次。") }
+                rom = url
+            } else {
+                guard ["prc", "pdb"].contains(url.pathExtension.lowercased()) else {
+                    throw LaunchError("只能安装 PRC 或 PDB 文件：\(url.path)")
+                }
+                databases.append(url)
+            }
+            index += 1
+        }
+        return LaunchOptions(rom: rom, databases: databases)
+    }
+
+    struct LaunchError: LocalizedError {
+        let detail: String
+        init(_ detail: String) { self.detail = detail }
+        var errorDescription: String? { detail }
+    }
+}
+
 @MainActor
 final class EmulatorModel: ObservableObject {
     struct Device: Identifiable, Hashable {
@@ -64,10 +131,19 @@ final class EmulatorModel: ObservableObject {
     private var timer: Timer?
     private var activeSessionURL: URL?
     private var pendingBrowserInstall = false
+    private var pendingCommandLineInstall: [URL] = []
+    private var commandLineStartPending = false
     private var pendingKeys: [Int] = []
     private var lastSaveAt = Date()
 
     init() {
+        let options: LaunchOptions
+        do {
+            options = try LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
+        } catch {
+            fputs("CloudpilotMac: \(error.localizedDescription)\n", stderr)
+            exit(EX_USAGE)
+        }
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Palm-m515-4.1-en.rom"),
            FileManager.default.fileExists(atPath: bundled.path) {
             if let device = try? EmbeddedCore().detectDevice(rom: bundled) {
@@ -78,10 +154,31 @@ final class EmulatorModel: ObservableObject {
                 message = "内置 ROM 无法识别。"
             }
         }
+        if let requestedROM = options.rom {
+            guard let device = try? EmbeddedCore().detectDevice(rom: requestedROM) else {
+                fputs("CloudpilotMac: 无法识别 ROM 对应的设备：\(requestedROM.path)\n", stderr)
+                exit(EX_DATAERR)
+            }
+            romURL = requestedROM
+            detectedDevice = device
+            message = "已识别 \(detectedDeviceName)，正在启动。"
+        }
+        if options.shouldStart && detectedDevice == nil {
+            fputs("CloudpilotMac: 没有可启动的 ROM，请使用 --rom 指定文件。\n", stderr)
+            exit(EX_NOINPUT)
+        }
+        pendingCommandLineInstall = options.databases
+        commandLineStartPending = options.shouldStart
         refreshLibrary()
     }
 
     func attach(_ view: NSView) { displayView = view }
+
+    func startFromCommandLineIfNeeded() {
+        guard commandLineStartPending, displayView?.window != nil else { return }
+        commandLineStartPending = false
+        launch()
+    }
 
     func pen(x: Int, y: Int, down: Bool) { core?.pen(x: x, y: y, down: down) }
     func key(_ code: Int) {
@@ -394,6 +491,11 @@ final class EmulatorModel: ObservableObject {
                         self.pendingBrowserInstall = false
                         self.installBundledBrowser(using: core)
                     }
+                    if core.uiReady && !self.pendingCommandLineInstall.isEmpty {
+                        let files = self.pendingCommandLineInstall
+                        self.pendingCommandLineInstall.removeAll()
+                        self.install(files, using: core)
+                    }
                     if Date().timeIntervalSince(self.lastSaveAt) > 60 {
                         if let url = self.activeSessionURL { _ = core.save(to: url) }
                         if let url = self.mountedCardURL { _ = core.saveCard(to: url) }
@@ -417,6 +519,7 @@ final class EmulatorModel: ObservableObject {
         (displayView as? PalmDisplayView)?.clear()
         activeSessionURL = nil
         pendingBrowserInstall = false
+        pendingCommandLineInstall.removeAll()
         pendingKeys.removeAll()
         isRunning = false
         message = "模拟器已停止。"
@@ -440,6 +543,26 @@ final class EmulatorModel: ObservableObject {
                [1, 2].contains(core.installDatabase(file)) { installed += 1 }
         }
         message = installed == 2 ? "已安装 EudoraWeb 浏览器，网络可用。" : "浏览器自动安装未完成，可手动安装 PRC。"
+    }
+
+    private func install(_ files: [URL], using core: EmbeddedCore) {
+        var installed = 0
+        var rebootRequired = false
+        var failures: [String] = []
+        for file in files {
+            let result = core.installDatabase(file)
+            if result == 1 || result == 2 {
+                installed += 1
+                rebootRequired = rebootRequired || result == 2
+            } else {
+                failures.append(file.lastPathComponent)
+            }
+        }
+        let summary = failures.isEmpty
+            ? "已安装 \(installed) 个 Palm 应用/数据库。"
+            : "已安装 \(installed) 个；失败：\(failures.joined(separator: "、"))"
+        message = rebootRequired ? "\(summary) 需软重置。" : summary
+        fputs("CloudpilotMac: \(message)\n", stderr)
     }
 }
 

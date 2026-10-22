@@ -25,6 +25,23 @@ brew install sdl2 sdl2_image readline curl
 
 成品位于 `dist/Palm OS.app`。脚本嵌入模拟器核心、所需动态库与 Palm m515 ROM。启动后可直接运行，也可导入其他 ROM；应用按原项目的 ROM 兼容规则自动识别对应设备，设备不可手动更改。模拟器会每分钟及停止时将会话保存至用户的 Application Support 目录。
 
+## 从命令行启动
+
+可直接执行 App 内的程序，指定 ROM 并安装一个或多个 Palm 应用/数据库：
+
+```sh
+"dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --rom "ROMs/Palm-m515-4.1-en.rom" --install "PalmApps/EudoraWeb_2.1.prc"
+"dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --install "/path/to/app.prc" --install "/path/to/data.pdb"
+```
+
+`--rom` 自动识别设备并启动；未提供时使用内置 ROM。`--install` 可重复，`--app` 是同义参数。应用会在 Palm OS 初始化完成后安装文件，并在窗口状态栏及标准错误输出中显示结果。路径支持绝对路径、`~` 和相对当前目录的路径。使用 `open` 时建议传绝对路径，并加 `-n` 确保启动新进程以接收参数：
+
+```sh
+open -n "dist/Palm OS.app" --args --rom "/absolute/path/to/Palm.rom" --install "/absolute/path/to/app.prc"
+```
+
+执行程序加 `--help` 可查看全部参数。再次指定同一 ROM 时会继续使用该 ROM 先前保存的会话。
+
 应用使用 CloudpilotEmu 的原生网络后端，将 Palm OS 的网络请求直接转接至 macOS 的网络栈，不需要额外运行代理服务。网络默认开启，可在工具栏“更多操作”中切换。首次使用内置 Palm m515 ROM 建立会话时，应用会在 Palm 系统就绪后安装随包附带的 EudoraWeb 2.1 浏览器及 SSLPlus；已有会话可用“安装 PRC/PDB”手动安装。老浏览器对现代 HTTPS、网页脚本和复杂页面的兼容性有限，建议先用普通 HTTP 页面验证连接。浏览器来源见 `PalmApps/SOURCE.md`。EudoraWeb 首次启动可能要求用户阅读并接受其许可协议。
 
 运行中可从工具栏的“更多操作”或“模拟器”菜单触发 HotSync、软重置和保存 PNG 截图。HotSync 会按下模拟设备的底座按钮；与 Palm Desktop 传输数据仍需配置对应的桌面同步服务。
