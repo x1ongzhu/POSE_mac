@@ -131,7 +131,7 @@ final class EmulatorModel: ObservableObject {
     private var timer: Timer?
     private var activeSessionURL: URL?
     private var pendingBrowserInstall = false
-    private var pendingCommandLineInstall: [URL] = []
+    private var pendingInstallations: [URL] = []
     private var commandLineStartPending = false
     private var pendingKeys: [Int] = []
     private var lastSaveAt = Date()
@@ -167,7 +167,7 @@ final class EmulatorModel: ObservableObject {
             fputs("CloudpilotMac: 没有可启动的 ROM，请使用 --rom 指定文件。\n", stderr)
             exit(EX_NOINPUT)
         }
-        pendingCommandLineInstall = options.databases
+        pendingInstallations = options.databases
         commandLineStartPending = options.shouldStart
         refreshLibrary()
     }
@@ -232,21 +232,62 @@ final class EmulatorModel: ObservableObject {
         panel.allowsMultipleSelection = true
         panel.message = "选择要安装的 PRC 或 PDB 文件"
         guard panel.runModal() == .OK else { return }
-        var success = 0
-        var rebootRequired = false
-        var failures: [String] = []
-        for url in panel.urls {
-            guard ["prc", "pdb"].contains(url.pathExtension.lowercased()) else {
-                failures.append(url.lastPathComponent)
-                continue
-            }
-            let result = core.installDatabase(url)
-            if result == 1 || result == 2 { success += 1; rebootRequired = rebootRequired || result == 2 }
-            else { failures.append(url.lastPathComponent) }
+        let files = panel.urls
+        guard files.allSatisfy({ ["prc", "pdb"].contains($0.pathExtension.lowercased()) }) else {
+            message = "只能安装 PRC 或 PDB 文件。"
+            return
         }
-        message = failures.isEmpty
-            ? (rebootRequired ? "已安装 \(success) 个，需软重置。" : "已安装 \(success) 个 Palm 数据库。")
-            : "已安装 \(success) 个；失败：\(failures.joined(separator: "、"))"
+        if core.uiReady { install(files, using: core) }
+        else {
+            pendingInstallations.append(contentsOf: files)
+            message = "Palm OS 初始化完成后将安装 \(files.count) 个文件。"
+        }
+    }
+
+    func loadDroppedFiles(_ urls: [URL]) {
+        guard !urls.isEmpty else { message = "无法读取拖入的文件。"; return }
+        var databases: [URL] = []
+        var roms: [URL] = []
+        for url in urls {
+            let file = url.standardizedFileURL
+            var isDirectory: ObjCBool = false
+            guard file.isFileURL,
+                  FileManager.default.fileExists(atPath: file.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                message = "文件不存在或无法读取：\(url.lastPathComponent)"
+                return
+            }
+            if ["prc", "pdb"].contains(file.pathExtension.lowercased()) {
+                databases.append(file)
+            } else {
+                roms.append(file)
+            }
+        }
+        guard roms.count <= 1 else { message = "一次只能拖入一个 ROM。"; return }
+        if let rom = roms.first {
+            guard let device = try? EmbeddedCore().detectDevice(rom: rom) else {
+                message = "无法识别 ROM：\(rom.lastPathComponent)"
+                return
+            }
+            if isRunning { stop() }
+            romURL = rom
+            selectedSessionURL = nil
+            mountedCardURL = nil
+            detectedDevice = device
+            pendingInstallations.append(contentsOf: databases)
+            launch()
+        } else if !databases.isEmpty {
+            if let core, core.uiReady {
+                install(databases, using: core)
+            } else {
+                pendingInstallations.append(contentsOf: databases)
+                if isRunning {
+                    message = "Palm OS 初始化完成后将安装 \(databases.count) 个文件。"
+                } else {
+                    launch()
+                }
+            }
+        }
     }
 
     func refreshLibrary() {
@@ -491,9 +532,9 @@ final class EmulatorModel: ObservableObject {
                         self.pendingBrowserInstall = false
                         self.installBundledBrowser(using: core)
                     }
-                    if core.uiReady && !self.pendingCommandLineInstall.isEmpty {
-                        let files = self.pendingCommandLineInstall
-                        self.pendingCommandLineInstall.removeAll()
+                    if core.uiReady && !self.pendingInstallations.isEmpty {
+                        let files = self.pendingInstallations
+                        self.pendingInstallations.removeAll()
                         self.install(files, using: core)
                     }
                     if Date().timeIntervalSince(self.lastSaveAt) > 60 {
@@ -519,7 +560,7 @@ final class EmulatorModel: ObservableObject {
         (displayView as? PalmDisplayView)?.clear()
         activeSessionURL = nil
         pendingBrowserInstall = false
-        pendingCommandLineInstall.removeAll()
+        pendingInstallations.removeAll()
         pendingKeys.removeAll()
         isRunning = false
         message = "模拟器已停止。"

@@ -48,6 +48,8 @@ open -n "dist/Palm OS.app" --args --rom "/absolute/path/to/Palm.rom" --install "
 
 工具栏的安装按钮可将 PRC/PDB 文件装入当前设备。资源库可导入、打开、复制、导出或删除会话；存储卡可导入镜像、创建空白卡、挂载、弹出、导出或删除。存储卡在弹出和停止模拟器时写回应用的存储目录。
 
+也可从 Finder 将 ROM 或多个 PRC/PDB 直接拖到主窗口。ROM 会自动识别设备并启动；PRC/PDB 安装到当前设备，若设备未启动则先启动，待 Palm OS 初始化完成后安装。同一次拖放可以包含一个 ROM 和多个 PRC/PDB。
+
 ## 单独运行 SwiftUI 开发版
 
 ```sh

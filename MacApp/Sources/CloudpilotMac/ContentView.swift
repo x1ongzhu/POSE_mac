@@ -1,8 +1,10 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject var model: EmulatorModel
     @State private var showingLibrary = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,6 +15,25 @@ struct ContentView: View {
         }
         .frame(minWidth: 460, idealWidth: 500, minHeight: 650, idealHeight: 700)
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color.accentColor.opacity(0.10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [9, 6]))
+                    }
+                    .overlay {
+                        Label("拖入 ROM 或 PRC/PDB", systemImage: "square.and.arrow.down")
+                            .font(.headline)
+                            .padding(18)
+                            .background(.regularMaterial, in: Capsule())
+                    }
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: receiveFiles)
         .sheet(isPresented: $showingLibrary) { LibraryView(model: model) }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -56,6 +77,31 @@ struct ContentView: View {
                 .help("网络连接、HotSync、重置与截图")
             }
         }
+    }
+
+    private func receiveFiles(_ providers: [NSItemProvider]) -> Bool {
+        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !files.isEmpty else { return false }
+        let group = DispatchGroup()
+        var urls = [URL?](repeating: nil, count: files.count)
+        for (index, provider) in files.enumerated() {
+            group.enter()
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let url: URL?
+                if let item = item as? URL { url = item }
+                else if let item = item as? Data { url = URL(dataRepresentation: item, relativeTo: nil) }
+                else { url = nil }
+                DispatchQueue.main.async {
+                    urls[index] = url
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            let decoded = urls.compactMap { $0 }
+            model.loadDroppedFiles(decoded.count == urls.count ? decoded : [])
+        }
+        return true
     }
 
     private var device: some View {
