@@ -69,6 +69,19 @@ extern "C" int cloudpilot_embedded_install_database(const char* path) {
     return static_cast<int>(DbInstaller(size, data.get()).Install());
 }
 
+extern "C" bool cloudpilot_embedded_launch_app_for_database(const char* path) {
+    if (!loop || !path) return false;
+    std::unique_ptr<uint8[]> data;
+    size_t size = 0;
+    if (!util::ReadFile(path, data, size) || size < 64 ||
+        std::memcmp(data.get() + 60, "appl", 4) != 0) return false;
+
+    const char* name = reinterpret_cast<const char*>(data.get());
+    const void* terminator = std::memchr(name, '\0', 32);
+    if (!terminator || name[0] == '\0') return false;
+    return gSession->LaunchAppByName(std::string(name));
+}
+
 extern "C" bool cloudpilot_embedded_mount_card(const char* path) {
     return loop && path && util::mountImage(path);
 }

@@ -169,6 +169,7 @@ final class EmulatorModel: ObservableObject {
     private let windowSessionID: String?
     private var pendingBrowserInstall = false
     private var pendingInstallations: [URL] = []
+    private var commandLineAppToLaunch: URL?
     private var commandLineStartPending = false
     private var pendingKeys: [Int] = []
     private var lastSaveAt = Date()
@@ -206,6 +207,7 @@ final class EmulatorModel: ObservableObject {
             exit(EX_NOINPUT)
         }
         pendingInstallations = options.databases
+        commandLineAppToLaunch = options.databases.last { $0.pathExtension.lowercased() == "prc" }
         commandLineStartPending = options.shouldStart
         refreshLibrary()
     }
@@ -577,7 +579,9 @@ final class EmulatorModel: ObservableObject {
                     if core.uiReady && !self.pendingInstallations.isEmpty {
                         let files = self.pendingInstallations
                         self.pendingInstallations.removeAll()
-                        self.install(files, using: core)
+                        let appToLaunch = self.commandLineAppToLaunch
+                        self.commandLineAppToLaunch = nil
+                        self.install(files, using: core, launching: appToLaunch)
                     }
                     if Date().timeIntervalSince(self.lastSaveAt) > 60 {
                         if let url = self.activeSessionURL { _ = core.save(to: url) }
@@ -604,6 +608,7 @@ final class EmulatorModel: ObservableObject {
         activeSessionURL = nil
         pendingBrowserInstall = false
         pendingInstallations.removeAll()
+        commandLineAppToLaunch = nil
         pendingKeys.removeAll()
         isRunning = false
         message = "模拟器已停止。"
@@ -630,15 +635,17 @@ final class EmulatorModel: ObservableObject {
         message = installed == 2 ? "已安装 EudoraWeb 浏览器，网络可用。" : "浏览器自动安装未完成，可手动安装 PRC。"
     }
 
-    private func install(_ files: [URL], using core: EmbeddedCore) {
+    private func install(_ files: [URL], using core: EmbeddedCore, launching appToLaunch: URL? = nil) {
         var installed = 0
         var rebootRequired = false
         var failures: [String] = []
+        var requestedAppInstalled = false
         for file in files {
             let result = core.installDatabase(file)
             if result == 1 || result == 2 {
                 installed += 1
                 rebootRequired = rebootRequired || result == 2
+                if file == appToLaunch && result == 1 { requestedAppInstalled = true }
             } else {
                 failures.append(file.lastPathComponent)
             }
@@ -647,6 +654,11 @@ final class EmulatorModel: ObservableObject {
             ? "已安装 \(installed) 个 Palm 应用/数据库。"
             : "已安装 \(installed) 个；失败：\(failures.joined(separator: "、"))"
         message = rebootRequired ? "\(summary) 需软重置。" : summary
+        if let appToLaunch, requestedAppInstalled {
+            message += core.launchApp(from: appToLaunch)
+                ? " 已启动 \(appToLaunch.deletingPathExtension().lastPathComponent)。"
+                : " 无法启动 \(appToLaunch.lastPathComponent)。"
+        }
         fputs("CloudpilotMac: \(message)\n", stderr)
     }
 }
@@ -664,6 +676,7 @@ private final class EmbeddedCore {
     typealias DetectDevice = @convention(c) (UnsafePointer<CChar>?) -> UnsafePointer<CChar>?
     typealias Reset = @convention(c) () -> Void
     typealias InstallDatabase = @convention(c) (UnsafePointer<CChar>?) -> Int32
+    typealias LaunchApp = @convention(c) (UnsafePointer<CChar>?) -> Bool
     typealias CardPathAction = @convention(c) (UnsafePointer<CChar>?) -> Bool
     typealias CardAction = @convention(c) () -> Bool
     typealias SetNetwork = @convention(c) (Bool) -> Void
@@ -682,6 +695,7 @@ private final class EmbeddedCore {
     private let detectDeviceFunction: DetectDevice
     private let resetFunction: Reset
     private let installDatabaseFunction: InstallDatabase
+    private let launchAppFunction: LaunchApp
     private let mountCardFunction: CardPathAction
     private let saveCardFunction: CardPathAction
     private let unmountCardFunction: CardAction
@@ -711,6 +725,7 @@ private final class EmbeddedCore {
               let detectDevice = dlsym(handle, "cloudpilot_embedded_detect_device"),
               let reset = dlsym(handle, "cloudpilot_embedded_reset"),
               let installDatabase = dlsym(handle, "cloudpilot_embedded_install_database"),
+              let launchApp = dlsym(handle, "cloudpilot_embedded_launch_app_for_database"),
               let mountCard = dlsym(handle, "cloudpilot_embedded_mount_card"),
               let saveCard = dlsym(handle, "cloudpilot_embedded_save_card"),
               let unmountCard = dlsym(handle, "cloudpilot_embedded_unmount_card"),
@@ -732,6 +747,7 @@ private final class EmbeddedCore {
         detectDeviceFunction = unsafeBitCast(detectDevice, to: DetectDevice.self)
         resetFunction = unsafeBitCast(reset, to: Reset.self)
         installDatabaseFunction = unsafeBitCast(installDatabase, to: InstallDatabase.self)
+        launchAppFunction = unsafeBitCast(launchApp, to: LaunchApp.self)
         mountCardFunction = unsafeBitCast(mountCard, to: CardPathAction.self)
         saveCardFunction = unsafeBitCast(saveCard, to: CardPathAction.self)
         unmountCardFunction = unsafeBitCast(unmountCard, to: CardAction.self)
@@ -769,6 +785,7 @@ private final class EmbeddedCore {
     func setNetworkEnabled(_ enabled: Bool) { setNetworkFunction(enabled) }
     var uiReady: Bool { uiReadyFunction() }
     func installDatabase(_ url: URL) -> Int32 { url.path.withCString { installDatabaseFunction($0) } }
+    func launchApp(from url: URL) -> Bool { url.path.withCString { launchAppFunction($0) } }
     func mountCard(_ url: URL) -> Bool { url.path.withCString { mountCardFunction($0) } }
     func saveCard(to url: URL) -> Bool { url.path.withCString { saveCardFunction($0) } }
     func unmountCard() -> Bool { unmountCardFunction() }
