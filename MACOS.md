@@ -32,9 +32,11 @@ brew install sdl2 sdl2_image readline curl
 ```sh
 "dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --rom "ROMs/Palm-m515-4.1-en.rom" --install "PalmApps/EudoraWeb_2.1.prc"
 "dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --install "/path/to/app.prc" --install "/path/to/data.pdb"
+"dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --reset
+"dist/Palm OS.app/Contents/MacOS/CloudpilotMac" --rom "/path/to/Palm.rom" --reset --install "/path/to/app.prc"
 ```
 
-`--rom` 自动识别设备并在窗口打开后立即启动虚拟机；未提供时使用内置 ROM。`--install` 可重复，`--app` 是同义参数。Palm OS 初始化完成后会安装所有文件，并自动打开最后指定且安装成功的 PRC 应用；PDB 仅安装数据。结果会显示在窗口状态栏及标准错误输出中。路径支持绝对路径、`~` 和相对当前目录的路径。使用 `open` 时建议传绝对路径，并加 `-n` 确保启动新进程以接收参数：
+`--rom` 自动识别设备并在窗口打开后立即启动虚拟机；未提供时使用内置 ROM。`--reset`（或 `--soft-reset`）会启动虚拟机并执行一次软复位，与安装参数同用时先复位，再等 Palm OS 就绪后安装。`--install` 可重复，`--app` 是同义参数。Palm OS 初始化完成后会安装所有文件，并自动打开最后指定且安装成功的 PRC 应用；PDB 仅安装数据。结果会显示在窗口状态栏及标准错误输出中。路径支持绝对路径、`~` 和相对当前目录的路径。使用 `open` 时建议传绝对路径，并加 `-n` 确保启动新进程以接收参数：
 
 ```sh
 open -n "dist/Palm OS.app" --args --rom "/absolute/path/to/Palm.rom" --install "/absolute/path/to/app.prc"

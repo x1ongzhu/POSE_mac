@@ -6,13 +6,15 @@ import Foundation
 private struct LaunchOptions {
     let rom: URL?
     let databases: [URL]
+    let softReset: Bool
     let newWindow: Bool
 
-    var shouldStart: Bool { rom != nil || !databases.isEmpty }
+    var shouldStart: Bool { rom != nil || !databases.isEmpty || softReset }
 
     static let usage = """
-    用法：CloudpilotMac [--rom ROM文件] [--install PRC或PDB文件 ...]
+    用法：CloudpilotMac [--rom ROM文件] [--reset] [--install PRC或PDB文件 ...]
       --rom PATH       启动指定 ROM，自动识别设备
+      --reset          启动后软复位；--soft-reset 为别名
       --install PATH   启动后安装 PRC/PDB，可重复指定；--app 为别名
       --help           显示此帮助
     未指定 ROM 时使用应用内置 ROM。路径可为绝对路径或相对于当前目录。
@@ -21,6 +23,7 @@ private struct LaunchOptions {
     static func parse(_ arguments: [String]) throws -> LaunchOptions {
         var rom: URL?
         var databases: [URL] = []
+        var softReset = false
         var newWindow = false
         var index = 0
         while index < arguments.count {
@@ -32,6 +35,11 @@ private struct LaunchOptions {
             }
             if argument == "--new-window" {
                 newWindow = true
+                index += 1
+                continue
+            }
+            if argument == "--reset" || argument == "--soft-reset" {
+                softReset = true
                 index += 1
                 continue
             }
@@ -67,7 +75,7 @@ private struct LaunchOptions {
             }
             index += 1
         }
-        return LaunchOptions(rom: rom, databases: databases, newWindow: newWindow)
+        return LaunchOptions(rom: rom, databases: databases, softReset: softReset, newWindow: newWindow)
     }
 
     struct LaunchError: LocalizedError {
@@ -170,7 +178,10 @@ final class EmulatorModel: ObservableObject {
     private var pendingBrowserInstall = false
     private var pendingInstallations: [URL] = []
     private var commandLineAppToLaunch: URL?
+    private var commandLineSoftResetPending = false
     private var commandLineStartPending = false
+    private var awaitingResetUIReady = false
+    private var resetInstallReadyAt: Date?
     private var pendingKeys: [Int] = []
     private var lastSaveAt = Date()
 
@@ -208,6 +219,7 @@ final class EmulatorModel: ObservableObject {
         }
         pendingInstallations = options.databases
         commandLineAppToLaunch = options.databases.last { $0.pathExtension.lowercased() == "prc" }
+        commandLineSoftResetPending = options.softReset
         commandLineStartPending = options.shouldStart
         refreshLibrary()
     }
@@ -548,12 +560,20 @@ final class EmulatorModel: ObservableObject {
             }
             try core.start(rom: image, device: detectedDevice, view: displayView)
             core.setNetworkEnabled(networkEnabled)
+            let didSoftReset = commandLineSoftResetPending
+            if didSoftReset {
+                core.reset()
+                commandLineSoftResetPending = false
+                awaitingResetUIReady = true
+                resetInstallReadyAt = nil
+                fputs("CloudpilotMac: 已执行软复位。\n", stderr)
+            }
             pendingBrowserInstall = !existingSession && selectedSessionURL == nil
                 && romURL.lastPathComponent == "Palm-m515-4.1-en.rom"
             self.core = core
             sessionLock = lock
             isRunning = true
-            message = "Palm OS 正在运行。"
+            message = didSoftReset ? "已执行软复位，Palm OS 正在启动。" : "Palm OS 正在运行。"
             if let mountedCardURL, !core.mountCard(mountedCardURL) {
                 message = "存储卡未能挂载。"
                 self.mountedCardURL = nil
@@ -576,9 +596,16 @@ final class EmulatorModel: ObservableObject {
                         self.pendingBrowserInstall = false
                         self.installBundledBrowser(using: core)
                     }
-                    if core.uiReady && !self.pendingInstallations.isEmpty {
+                    if self.awaitingResetUIReady && core.uiReady {
+                        self.awaitingResetUIReady = false
+                        self.resetInstallReadyAt = Date().addingTimeInterval(5)
+                    }
+                    if core.uiReady,
+                       self.resetInstallReadyAt.map({ Date() >= $0 }) ?? true,
+                       !self.pendingInstallations.isEmpty {
                         let files = self.pendingInstallations
                         self.pendingInstallations.removeAll()
+                        self.resetInstallReadyAt = nil
                         let appToLaunch = self.commandLineAppToLaunch
                         self.commandLineAppToLaunch = nil
                         self.install(files, using: core, launching: appToLaunch)
@@ -609,6 +636,8 @@ final class EmulatorModel: ObservableObject {
         pendingBrowserInstall = false
         pendingInstallations.removeAll()
         commandLineAppToLaunch = nil
+        awaitingResetUIReady = false
+        resetInstallReadyAt = nil
         pendingKeys.removeAll()
         isRunning = false
         message = "模拟器已停止。"
