@@ -9,6 +9,8 @@
 		A10000000000000000000001 = {isa = PBXBuildFile; fileRef = A20000000000000000000001; };
 		A10000000000000000000002 = {isa = PBXBuildFile; fileRef = A20000000000000000000002; };
 		A10000000000000000000003 = {isa = PBXBuildFile; fileRef = A20000000000000000000003; };
+		A1000000000000000000000A = {isa = PBXBuildFile; fileRef = A2000000000000000000000A; };
+		A1000000000000000000000B = {isa = PBXBuildFile; fileRef = A2000000000000000000000B; };
 		A10000000000000000000004 = {isa = PBXBuildFile; fileRef = A20000000000000000000004; };
 		A10000000000000000000005 = {isa = PBXBuildFile; fileRef = A20000000000000000000005; };
 		A10000000000000000000006 = {isa = PBXBuildFile; fileRef = A20000000000000000000006; };
@@ -20,6 +22,8 @@
 		A20000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudpilotMacApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmulatorModel.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPControlServer.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = "../tools/palmos-mcp-server.py"; sourceTree = "<group>"; };
 		A20000000000000000000004 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = file; path = "../ROMs/Palm-m515-4.1-en.rom"; sourceTree = "<group>"; };
 		A20000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = file; path = "../PalmApps/EudoraWeb_2.1.prc"; sourceTree = "<group>"; };
@@ -45,14 +49,14 @@
 		};
 		A40000000000000000000002 = {
 			isa = PBXGroup;
-			children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003);
+			children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A2000000000000000000000A);
 			name = Sources;
 			path = Sources/CloudpilotMac;
 			sourceTree = "<group>";
 		};
 		A40000000000000000000003 = {
 			isa = PBXGroup;
-			children = (A20000000000000000000009, A20000000000000000000004, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007);
+			children = (A20000000000000000000009, A20000000000000000000004, A20000000000000000000005, A20000000000000000000006, A20000000000000000000007, A2000000000000000000000B);
 			name = Resources;
 			sourceTree = "<group>";
 		};
@@ -103,7 +107,7 @@
 		A60000000000000000000002 = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A10000000000000000000009, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007);
+			files = (A10000000000000000000009, A10000000000000000000005, A10000000000000000000006, A10000000000000000000007, A1000000000000000000000B);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -127,7 +131,7 @@
 		A60000000000000000000001 = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003);
+			files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000003, A1000000000000000000000A);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

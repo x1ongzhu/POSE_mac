@@ -54,6 +54,10 @@ open -n "dist/Palm OS.app" --args --rom "/absolute/path/to/Palm.rom" --install "
 
 按 ⌘N 可新建模拟器窗口。每个窗口由独立的 App 进程运行，可同时模拟不同设备；新窗口为内置 ROM 创建独立会话。若尝试在两个窗口中打开同一会话镜像，后打开的窗口会提示该会话已在运行，防止并发写入。
 
+## AI / MCP 调试
+
+App 自带本机 MCP 控制接口与 stdio 服务，可让 AI 客户端读取屏幕、发送触控与按键、安装并启动 PRC、加载 ROM、软复位和保存会话。配置和工具用法见 [MCP.md](MCP.md)。
+
 ## 单独运行 SwiftUI 开发版
 
 ```sh

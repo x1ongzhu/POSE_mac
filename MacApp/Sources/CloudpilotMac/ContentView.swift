@@ -396,6 +396,11 @@ final class PalmDisplayView: NSView, NSTextInputClient {
         return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
     }
 
+    var screenshotSize: (width: Int, height: Int)? {
+        guard currentImage != nil else { return nil }
+        return (imageWidth, imageHeight)
+    }
+
     func clear() {
         currentImage = nil
         layer?.contents = nil
@@ -452,31 +457,7 @@ final class PalmDisplayView: NSView, NSTextInputClient {
     }
 
     @discardableResult private func sendText(_ text: String) -> Bool {
-        var sent = false
-        for scalar in text.unicodeScalars {
-            let code = scalar.value
-            let replacement: String
-            switch code {
-            case 0xFF01...0xFF5E: replacement = String(UnicodeScalar(code - 0xFEE0)!)
-            case 0x3000: replacement = " "
-            case 0x3001: replacement = ","
-            case 0x3002, 0x00B7, 0x30FB: replacement = "."
-            case 0x2018, 0x2019, 0x300C, 0x300D: replacement = "'"
-            case 0x201C, 0x201D: replacement = "\""
-            case 0x2013, 0x2014, 0x2212: replacement = "-"
-            case 0x2026: replacement = "..."
-            case 0x300A: replacement = "<"
-            case 0x300B: replacement = ">"
-            case 0x3010: replacement = "["
-            case 0x3011: replacement = "]"
-            default: replacement = code < 256 ? String(scalar) : ""
-            }
-            for character in replacement.unicodeScalars {
-                model?.key(Int(character.value))
-                sent = true
-            }
-        }
-        return sent
+        (model?.typeText(text) ?? 0) > 0
     }
 
     func hasMarkedText() -> Bool { markedText.length > 0 }

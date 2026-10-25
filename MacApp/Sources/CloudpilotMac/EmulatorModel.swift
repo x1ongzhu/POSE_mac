@@ -170,6 +170,7 @@ final class EmulatorModel: ObservableObject {
     }
 
     private weak var displayView: NSView?
+    private var mcpControlServer: MCPControlServer?
     private var core: EmbeddedCore?
     private var timer: Timer?
     private var activeSessionURL: URL?
@@ -180,8 +181,8 @@ final class EmulatorModel: ObservableObject {
     private var commandLineAppToLaunch: URL?
     private var commandLineSoftResetPending = false
     private var commandLineStartPending = false
-    private var awaitingResetUIReady = false
-    private var resetInstallReadyAt: Date?
+    private var awaitingUIReady = false
+    private var installReadyAt: Date?
     private var pendingKeys: [Int] = []
     private var lastSaveAt = Date()
 
@@ -224,7 +225,13 @@ final class EmulatorModel: ObservableObject {
         refreshLibrary()
     }
 
-    func attach(_ view: NSView) { displayView = view }
+    func attach(_ view: NSView) {
+        displayView = view
+        if mcpControlServer == nil {
+            do { mcpControlServer = try MCPControlServer(model: self) }
+            catch { fputs("CloudpilotMac: MCP 服务启动失败：\(error.localizedDescription)\n", stderr) }
+        }
+    }
 
     func startFromCommandLineIfNeeded() {
         guard commandLineStartPending, displayView?.window != nil else { return }
@@ -236,6 +243,34 @@ final class EmulatorModel: ObservableObject {
     func key(_ code: Int) {
         if isRunning { pendingKeys.append(code) }
     }
+    @discardableResult func typeText(_ text: String) -> Int {
+        guard isRunning else { return 0 }
+        var sent = 0
+        for scalar in text.unicodeScalars {
+            let code = scalar.value
+            let replacement: String
+            switch code {
+            case 0xFF01...0xFF5E: replacement = String(UnicodeScalar(code - 0xFEE0)!)
+            case 0x3000: replacement = " "
+            case 0x3001: replacement = ","
+            case 0x3002, 0x00B7, 0x30FB: replacement = "."
+            case 0x2018, 0x2019, 0x300C, 0x300D: replacement = "'"
+            case 0x201C, 0x201D: replacement = "\""
+            case 0x2013, 0x2014, 0x2212: replacement = "-"
+            case 0x2026: replacement = "..."
+            case 0x300A: replacement = "<"
+            case 0x300B: replacement = ">"
+            case 0x3010: replacement = "["
+            case 0x3011: replacement = "]"
+            default: replacement = code < 256 ? String(scalar) : ""
+            }
+            for character in replacement.unicodeScalars {
+                key(Int(character.value))
+                sent += 1
+            }
+        }
+        return sent
+    }
     func hardwareButton(_ id: Int32, down: Bool) { core?.button(id, down: down) }
     func hotSync() {
         guard let core else { return }
@@ -246,6 +281,8 @@ final class EmulatorModel: ObservableObject {
     func reset() {
         guard let core else { return }
         core.reset()
+        awaitingUIReady = true
+        installReadyAt = nil
         message = "Palm OS 正在软重置。"
     }
     func screenshot() {
@@ -289,7 +326,7 @@ final class EmulatorModel: ObservableObject {
             message = "只能安装 PRC 或 PDB 文件。"
             return
         }
-        if core.uiReady { install(files, using: core) }
+        if readyForMCPInstall { install(files, using: core) }
         else {
             pendingInstallations.append(contentsOf: files)
             message = "Palm OS 初始化完成后将安装 \(files.count) 个文件。"
@@ -329,7 +366,7 @@ final class EmulatorModel: ObservableObject {
             pendingInstallations.append(contentsOf: databases)
             launch()
         } else if !databases.isEmpty {
-            if let core, core.uiReady {
+            if let core, readyForMCPInstall {
                 install(databases, using: core)
             } else {
                 pendingInstallations.append(contentsOf: databases)
@@ -560,12 +597,12 @@ final class EmulatorModel: ObservableObject {
             }
             try core.start(rom: image, device: detectedDevice, view: displayView)
             core.setNetworkEnabled(networkEnabled)
+            awaitingUIReady = true
+            installReadyAt = nil
             let didSoftReset = commandLineSoftResetPending
             if didSoftReset {
                 core.reset()
                 commandLineSoftResetPending = false
-                awaitingResetUIReady = true
-                resetInstallReadyAt = nil
                 fputs("CloudpilotMac: 已执行软复位。\n", stderr)
             }
             pendingBrowserInstall = !existingSession && selectedSessionURL == nil
@@ -592,20 +629,18 @@ final class EmulatorModel: ObservableObject {
                         display.show(frame.data, width: frame.width, height: frame.height,
                                      pitch: frame.pitch)
                     }
-                    if self.pendingBrowserInstall && core.uiReady {
+                    if self.awaitingUIReady && core.uiReady {
+                        self.awaitingUIReady = false
+                        self.installReadyAt = Date().addingTimeInterval(5)
+                    }
+                    if self.pendingBrowserInstall && self.readyForMCPInstall {
                         self.pendingBrowserInstall = false
                         self.installBundledBrowser(using: core)
                     }
-                    if self.awaitingResetUIReady && core.uiReady {
-                        self.awaitingResetUIReady = false
-                        self.resetInstallReadyAt = Date().addingTimeInterval(5)
-                    }
-                    if core.uiReady,
-                       self.resetInstallReadyAt.map({ Date() >= $0 }) ?? true,
-                       !self.pendingInstallations.isEmpty {
+                    if self.readyForMCPInstall && !self.pendingInstallations.isEmpty {
                         let files = self.pendingInstallations
                         self.pendingInstallations.removeAll()
-                        self.resetInstallReadyAt = nil
+                        self.installReadyAt = nil
                         let appToLaunch = self.commandLineAppToLaunch
                         self.commandLineAppToLaunch = nil
                         self.install(files, using: core, launching: appToLaunch)
@@ -636,12 +671,160 @@ final class EmulatorModel: ObservableObject {
         pendingBrowserInstall = false
         pendingInstallations.removeAll()
         commandLineAppToLaunch = nil
-        awaitingResetUIReady = false
-        resetInstallReadyAt = nil
+        awaitingUIReady = false
+        installReadyAt = nil
         pendingKeys.removeAll()
         isRunning = false
         message = "模拟器已停止。"
         refreshLibrary()
+    }
+
+    private var readyForMCPInstall: Bool {
+        core?.uiReady == true && !awaitingUIReady
+            && (installReadyAt.map { Date() >= $0 } ?? true)
+    }
+
+    private func mcpStatus() -> [String: Any] {
+        let size = (displayView as? PalmDisplayView)?.screenshotSize
+        return [
+            "instance_id": Int(getpid()),
+            "running": isRunning,
+            "device": detectedDevice ?? NSNull(),
+            "rom_path": romURL?.path ?? NSNull(),
+            "session_path": activeSessionURL?.path ?? NSNull(),
+            "ui_ready": core?.uiReady ?? false,
+            "ready_for_install": readyForMCPInstall,
+            "network_enabled": networkEnabled,
+            "screen_width": size?.width ?? 0,
+            "screen_height": size?.height ?? 0,
+            "message": message
+        ]
+    }
+
+    func mcpRequest(_ request: [String: Any]) -> [String: Any] {
+        func success(_ result: [String: Any]) -> [String: Any] { ["ok": true, "result": result] }
+        func failure(_ detail: String) -> [String: Any] { ["ok": false, "error": detail] }
+        func fileURL(_ value: Any?) -> URL? {
+            guard let path = value as? String, !path.isEmpty else { return nil }
+            let expanded = (path as NSString).expandingTildeInPath
+            guard expanded.hasPrefix("/") else { return nil }
+            let url = URL(fileURLWithPath: expanded).standardizedFileURL
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else { return nil }
+            return url
+        }
+        guard let command = request["command"] as? String else { return failure("缺少 command。") }
+        switch command {
+        case "status":
+            return success(mcpStatus())
+        case "screenshot":
+            guard isRunning, let display = displayView as? PalmDisplayView,
+                  let size = display.screenshotSize, let png = display.screenshotPNG() else {
+                return failure("模拟器没有可用的画面。")
+            }
+            return success(["mime_type": "image/png", "data": png.base64EncodedString(),
+                            "width": size.width, "height": size.height])
+        case "tap", "pen_down", "pen_up":
+            guard isRunning, let size = (displayView as? PalmDisplayView)?.screenshotSize else {
+                return failure("请先启动模拟器。")
+            }
+            guard let x = request["x"] as? Int, let y = request["y"] as? Int,
+                  (0..<size.width).contains(x), (0..<size.height).contains(y) else {
+                return failure("坐标必须位于 \(size.width)×\(size.height) 的 Palm 画面内。")
+            }
+            pen(x: x, y: y, down: command != "pen_up")
+            if command == "tap" { pen(x: x, y: y, down: false) }
+            return success(["x": x, "y": y, "action": command])
+        case "type_text":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            guard let text = request["text"] as? String, text.count <= 4096 else {
+                return failure("text 必须是最多 4096 字符的字符串。")
+            }
+            return success(["keys_queued": typeText(text)])
+        case "press_key":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            guard let name = request["key"] as? String else { return failure("缺少 key。") }
+            let codes = ["backspace": 0x08, "enter": 0x0A, "tab": 0x09,
+                         "left": 0x1C, "right": 0x1D, "up": 0x1E, "down": 0x1F]
+            guard let code = codes[name.lowercased()] else {
+                return failure("支持的按键：backspace、enter、tab、left、right、up、down。")
+            }
+            key(code)
+            return success(["key": name.lowercased()])
+        case "hardware_button":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            guard let id = request["button"] as? Int, (0...7).contains(id) else {
+                return failure("button 必须为 0…7。")
+            }
+            hardwareButton(Int32(id), down: true)
+            hardwareButton(Int32(id), down: false)
+            return success(["button": id])
+        case "install":
+            guard let url = fileURL(request["path"]), ["prc", "pdb"].contains(url.pathExtension.lowercased()) else {
+                return failure("请提供现有 PRC/PDB 文件的绝对路径。")
+            }
+            guard let core, readyForMCPInstall else {
+                return failure("Palm OS 尚未就绪，请先调用 palm_wait_ready。")
+            }
+            let result = core.installDatabase(url)
+            guard result == 1 || result == 2 else { return failure("安装失败（代码 \(result)）：\(url.lastPathComponent)") }
+            let requestedLaunch = request["launch"] as? Bool ?? false
+            let launched = requestedLaunch && result == 1 && url.pathExtension.lowercased() == "prc"
+                && core.launchApp(from: url)
+            message = launched ? "已安装并启动 \(url.lastPathComponent)。" : "已安装 \(url.lastPathComponent)。"
+            if result == 2 { message += " 需软重置。" }
+            return success(["installed": true, "launched": launched, "reset_required": result == 2,
+                            "message": message])
+        case "launch_app":
+            guard let url = fileURL(request["path"]), url.pathExtension.lowercased() == "prc" else {
+                return failure("请提供现有 PRC 文件的绝对路径。")
+            }
+            guard let core, readyForMCPInstall else { return failure("Palm OS 尚未就绪。") }
+            guard core.launchApp(from: url) else { return failure("无法启动 \(url.lastPathComponent)，请先安装应用。") }
+            message = "已启动 \(url.lastPathComponent)。"
+            return success(["launched": true, "message": message])
+        case "load_rom":
+            guard let url = fileURL(request["path"]) else { return failure("请提供现有 ROM 文件的绝对路径。") }
+            guard let device = try? EmbeddedCore().detectDevice(rom: url) else {
+                return failure("无法识别 ROM 对应的设备。")
+            }
+            if isRunning { stop() }
+            romURL = url
+            selectedSessionURL = nil
+            mountedCardURL = nil
+            detectedDevice = device
+            launch()
+            return isRunning ? success(mcpStatus()) : failure(message)
+        case "start":
+            if !isRunning { launch() }
+            return isRunning ? success(mcpStatus()) : failure(message)
+        case "stop":
+            if isRunning { stop() }
+            return success(mcpStatus())
+        case "quit":
+            if isRunning { stop() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { NSApplication.shared.terminate(nil) }
+            return success(["quitting": true, "instance_id": Int(getpid())])
+        case "reset":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            reset()
+            return success(mcpStatus())
+        case "save":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            saveNow()
+            return success(mcpStatus())
+        case "hot_sync":
+            guard isRunning else { return failure("请先启动模拟器。") }
+            hotSync()
+            return success(mcpStatus())
+        case "set_network":
+            guard let enabled = request["enabled"] as? Bool else { return failure("缺少 enabled 布尔值。") }
+            networkEnabled = enabled
+            return success(mcpStatus())
+        default:
+            return failure("未知控制命令：\(command)")
+        }
     }
 
     private func sessionFile(for rom: URL, device: String) throws -> URL {
