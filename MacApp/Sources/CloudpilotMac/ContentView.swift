@@ -220,8 +220,16 @@ private struct LibraryView: View {
     @ObservedObject var model: EmulatorModel
     @Environment(\.dismiss) private var dismiss
     @State private var tab = 0
-    @State private var selectedSession: EmulatorModel.LibraryItem?
-    @State private var selectedCard: EmulatorModel.LibraryItem?
+    @State private var selectedSessionURL: URL?
+    @State private var selectedCardURL: URL?
+
+    private var selectedSession: EmulatorModel.LibraryItem? {
+        model.sessions.first { $0.url == selectedSessionURL }
+    }
+
+    private var selectedCard: EmulatorModel.LibraryItem? {
+        model.cards.first { $0.url == selectedCardURL }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -238,33 +246,30 @@ private struct LibraryView: View {
             .labelsHidden()
 
             if tab == 0 {
-                List {
+                List(selection: $selectedSessionURL) {
                     ForEach(model.sessions) { item in
-                        Button { selectedSession = item } label: {
-                            HStack {
-                                Image(systemName: "macwindow")
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(item.name.count > 48 ? "\(item.device ?? "Palm") 会话" : item.name).lineLimit(1)
-                                    Text("\(item.device ?? "未知设备") · \(item.modified.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if model.selectedSessionURL == item.url { Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint) }
+                        HStack {
+                            Image(systemName: "macwindow")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(item.name.count > 48 ? "\(item.device ?? "Palm") 会话" : item.name).lineLimit(1)
+                                Text("\(item.device ?? "未知设备") · \(item.modified.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
-                            .padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(selectedSession == item ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                            Spacer()
+                            if model.selectedSessionURL == item.url { Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint) }
                         }
-                        .buttonStyle(.plain)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .tag(item.url)
+                        .simultaneousGesture(TapGesture(count: 2).onEnded { openSession(item) })
                     }
                 }
                 .overlay { if model.sessions.isEmpty { emptyState("暂无已保存会话", "macwindow", "停止模拟器后，会话会自动保存在这里。") } }
 
                 HStack {
                     Button("导入…") { model.importSession() }
-                    Button("打开") {
-                        if let selectedSession { model.openSession(selectedSession); dismiss() }
-                    }
+                    Button("打开") { if let selectedSession { openSession(selectedSession) } }
                     .disabled(selectedSession == nil)
                     Button("复制当前会话") { model.duplicateSession() }
                         .disabled(!model.isRunning)
@@ -272,28 +277,26 @@ private struct LibraryView: View {
                     Button("导出…") { if let selectedSession { model.exportSession(selectedSession) } }
                         .disabled(selectedSession == nil)
                     Button("移到废纸篓") {
-                        if let selectedSession { model.deleteSession(selectedSession); self.selectedSession = nil }
+                        if let selectedSession { model.deleteSession(selectedSession); selectedSessionURL = nil }
                     }
                     .disabled(selectedSession == nil)
                 }
             } else {
-                List {
+                List(selection: $selectedCardURL) {
                     ForEach(model.cards) { item in
-                        Button { selectedCard = item } label: {
-                            HStack {
-                                Image(systemName: "sdcard")
-                                Text(item.name).lineLimit(1)
-                                Spacer()
-                                if model.mountedCardURL == item.url {
-                                    Text(model.isRunning ? "已挂载" : "待挂载")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
+                        HStack {
+                            Image(systemName: "sdcard")
+                            Text(item.name).lineLimit(1)
+                            Spacer()
+                            if model.mountedCardURL == item.url {
+                                Text(model.isRunning ? "已挂载" : "待挂载")
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
-                            .padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(selectedCard == item ? Color.accentColor.opacity(0.15) : .clear, in: RoundedRectangle(cornerRadius: 7))
                         }
-                        .buttonStyle(.plain)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .tag(item.url)
                     }
                 }
                 .overlay { if model.cards.isEmpty { emptyState("暂无存储卡", "sdcard", "导入 .img 存储卡镜像后可挂载到设备。") } }
@@ -314,7 +317,7 @@ private struct LibraryView: View {
                     Button("导出…") { if let selectedCard { model.exportCard(selectedCard) } }
                         .disabled(selectedCard == nil)
                     Button("移到废纸篓") {
-                        if let selectedCard { model.deleteCard(selectedCard); self.selectedCard = nil }
+                        if let selectedCard { model.deleteCard(selectedCard); selectedCardURL = nil }
                     }
                     .disabled(selectedCard == nil)
                 }
@@ -323,6 +326,11 @@ private struct LibraryView: View {
         .padding(20)
         .frame(width: 580, height: 430)
         .onAppear { model.refreshLibrary() }
+    }
+
+    private func openSession(_ item: EmulatorModel.LibraryItem) {
+        selectedSessionURL = item.url
+        if model.openSession(item) { dismiss() }
     }
 
     private func emptyState(_ title: String, _ symbol: String, _ detail: String) -> some View {

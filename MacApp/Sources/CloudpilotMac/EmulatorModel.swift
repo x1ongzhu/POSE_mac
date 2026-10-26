@@ -400,13 +400,15 @@ final class EmulatorModel: ObservableObject {
             .sorted { $0.modified > $1.modified } ?? []
     }
 
-    func openSession(_ item: LibraryItem) {
-        guard let device = item.device else { message = "会话镜像无法识别。"; return }
+    @discardableResult func openSession(_ item: LibraryItem) -> Bool {
+        guard let device = item.device else { message = "会话镜像无法识别。"; return false }
+        if isRunning && activeSessionURL == item.url { return true }
         if isRunning { stop() }
         selectedSessionURL = item.url
         mountedCardURL = nil
         detectedDevice = device
         launch()
+        return isRunning
     }
 
     func importSession() {
