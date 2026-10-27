@@ -417,22 +417,27 @@ final class EmulatorModel: ObservableObject {
         panel.allowsOtherFileTypes = true
         panel.message = "选择 Cloudpilot 会话镜像（.img）"
         guard panel.runModal() == .OK, let source = panel.url else { return }
-        guard (try? EmbeddedCore().detectDevice(rom: source)) != nil else {
-            message = "无法识别此会话镜像。"
-            return
-        }
         do {
-            let root = supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let destination = root.appendingPathComponent("\(source.deletingPathExtension().lastPathComponent)-\(UUID().uuidString.prefix(6)).img")
-            try FileManager.default.copyItem(at: source, to: destination)
-            refreshLibrary()
+            _ = try importSession(from: source)
             message = "会话已导入。"
         } catch { message = "导入会话失败：\(error.localizedDescription)" }
     }
 
-    func duplicateSession() {
-        guard isRunning, let activeSessionURL else { return }
+    private func importSession(from source: URL) throws -> URL {
+        guard source.pathExtension.lowercased() == "img",
+              (try? EmbeddedCore().detectDevice(rom: source)) != nil else {
+            throw LaunchOptions.LaunchError("无法识别此会话镜像。")
+        }
+        let root = supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let destination = root.appendingPathComponent("\(source.deletingPathExtension().lastPathComponent)-\(UUID().uuidString.prefix(6)).img")
+        try FileManager.default.copyItem(at: source, to: destination)
+        refreshLibrary()
+        return destination
+    }
+
+    @discardableResult func duplicateSession() -> URL? {
+        guard isRunning, let activeSessionURL else { message = "请先启动会话。"; return nil }
         saveNow()
         do {
             let destination = supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
@@ -447,34 +452,43 @@ final class EmulatorModel: ObservableObject {
             }
             refreshLibrary()
             message = "已创建会话副本。"
-        } catch { message = "复制会话失败：\(error.localizedDescription)" }
+            return destination
+        } catch { message = "复制会话失败：\(error.localizedDescription)"; return nil }
     }
 
     func exportSession(_ item: LibraryItem) {
-        if activeSessionURL == item.url { saveNow() }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.data]
         panel.nameFieldStringValue = item.url.lastPathComponent
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         do {
-            try Data(contentsOf: item.url).write(to: destination, options: .atomic)
+            try exportSession(item, to: destination)
             message = "会话已导出。"
         } catch { message = "导出失败：\(error.localizedDescription)" }
     }
 
+    private func exportSession(_ item: LibraryItem, to destination: URL) throws {
+        if activeSessionURL == item.url { saveNow() }
+        try Data(contentsOf: item.url).write(to: destination, options: .atomic)
+    }
+
     func deleteSession(_ item: LibraryItem) {
+        do { try trashSession(item); message = "会话已移到废纸篓。" }
+        catch { message = "删除失败：\(error.localizedDescription)" }
+    }
+
+    private func trashSession(_ item: LibraryItem) throws {
         if activeSessionURL == item.url { stop() }
+        let lock = try SessionLock(for: item.url)
+        defer { _ = lock }
         if selectedSessionURL == item.url {
             selectedSessionURL = nil
             detectedDevice = romURL.flatMap { try? EmbeddedCore().detectDevice(rom: $0) }
             mountedCardURL = nil
         }
-        do {
-            try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
-            UserDefaults.standard.removeObject(forKey: "card:\(item.url.path)")
-            refreshLibrary()
-            message = "会话已移到废纸篓。"
-        } catch { message = "删除失败：\(error.localizedDescription)" }
+        try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+        UserDefaults.standard.removeObject(forKey: "card:\(item.url.path)")
+        refreshLibrary()
     }
 
     func importCard() {
@@ -720,6 +734,57 @@ final class EmulatorModel: ObservableObject {
         switch command {
         case "status":
             return success(mcpStatus())
+        case "list_sessions":
+            refreshLibrary()
+            return success(["sessions": sessions.map { item in
+                ["path": item.url.path, "name": item.name,
+                 "device": item.device ?? NSNull(),
+                 "modified_at": ISO8601DateFormatter().string(from: item.modified),
+                 "active": activeSessionURL == item.url] as [String: Any]
+            }])
+        case "open_session", "export_session", "delete_session":
+            guard let url = fileURL(request["path"]) else {
+                return failure("请提供资源库中现有会话的绝对路径。")
+            }
+            refreshLibrary()
+            guard let item = sessions.first(where: { $0.url == url }) else {
+                return failure("会话不在当前资源库中，请先调用 palm_list_sessions。")
+            }
+            if command == "open_session" {
+                return openSession(item) ? success(mcpStatus()) : failure(message)
+            }
+            if command == "export_session" {
+                guard let destination = request["destination_path"] as? String,
+                      !destination.isEmpty else { return failure("缺少 destination_path。") }
+                let expanded = (destination as NSString).expandingTildeInPath
+                guard expanded.hasPrefix("/") else { return failure("destination_path 必须是绝对路径。") }
+                let target = URL(fileURLWithPath: expanded).standardizedFileURL
+                guard !FileManager.default.fileExists(atPath: target.path) else {
+                    return failure("目标文件已存在，请选择其他路径。")
+                }
+                do {
+                    try exportSession(item, to: target)
+                    message = "会话已导出。"
+                    return success(["path": target.path, "message": message])
+                } catch { return failure("导出失败：\(error.localizedDescription)") }
+            }
+            do {
+                try trashSession(item)
+                message = "会话已移到废纸篓。"
+                return success(["path": url.path, "trashed": true])
+            } catch { return failure("删除失败：\(error.localizedDescription)") }
+        case "import_session":
+            guard let source = fileURL(request["path"]) else {
+                return failure("请提供现有 .img 会话镜像的绝对路径。")
+            }
+            do {
+                let destination = try importSession(from: source)
+                message = "会话已导入。"
+                return success(["path": destination.path, "message": message])
+            } catch { return failure("导入会话失败：\(error.localizedDescription)") }
+        case "duplicate_session":
+            guard let destination = duplicateSession() else { return failure(message) }
+            return success(["path": destination.path, "message": message])
         case "screenshot":
             guard isRunning, let display = displayView as? PalmDisplayView,
                   let size = display.screenshotSize, let png = display.screenshotPNG() else {

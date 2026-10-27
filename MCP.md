@@ -27,4 +27,8 @@ args = ["/absolute/path/to/Palm OS.app/Contents/Resources/palmos-mcp-server.py"]
 5. 用 `palm_screenshot` 查看画面，并用 `palm_tap`、`palm_pen`、`palm_type_text`、`palm_press_key` 和 `palm_hardware_button` 操作设备。
 6. 用 `palm_reset` 软复位，`palm_save` 保存会话，`palm_stop` 保存并停止，`palm_quit` 保存并关闭指定实例。`palm_set_network` 控制网络重定向。
 
+## 会话资源库
+
+`palm_list_sessions` 返回已保存会话的绝对路径、设备、修改时间和当前窗口是否正在使用。把返回的 `path` 传给 `palm_open_session` 可直接打开会话。`palm_import_session` 从本地 `.img` 文件导入；`palm_duplicate_session` 保存并复制当前运行的会话，窗口随即使用副本。`palm_export_session` 将资源库中的会话写入 `destination_path`，目标文件已存在时会报错。`palm_delete_session` 把资源库中的会话移到 macOS 废纸篓；正在运行的目标会话会先保存并停止。多个窗口同时运行时，为每次调用指定 `instance_id`。
+
 截图返回 PNG 图像；触控坐标以截图左上角为原点，可从 `palm_status` 读取宽高。ROM、PRC 和 PDB 路径应使用绝对路径。控制 socket 位于 `~/Library/Application Support/Palm OS Emulator/MCP/`，目录权限为 `0700`，socket 权限为 `0600`；退出 App 后 socket 会移除。MCP 服务只访问当前 Mac 的模拟器，不能连接远程或云端运行的 App。
