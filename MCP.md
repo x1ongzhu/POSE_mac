@@ -29,6 +29,8 @@ args = ["/absolute/path/to/Palm OS.app/Contents/Resources/palmos-mcp-server.py"]
 
 ## 会话资源库
 
-`palm_list_sessions` 返回已保存会话的绝对路径、设备、修改时间和当前窗口是否正在使用。把返回的 `path` 传给 `palm_open_session` 可直接打开会话。`palm_import_session` 从本地 `.img` 文件导入；`palm_duplicate_session` 保存并复制当前运行的会话，窗口随即使用副本。`palm_export_session` 将资源库中的会话写入 `destination_path`，目标文件已存在时会报错。`palm_delete_session` 把资源库中的会话移到 macOS 废纸篓；正在运行的目标会话会先保存并停止。多个窗口同时运行时，为每次调用指定 `instance_id`。
+`palm_list_sessions` 返回已保存会话的绝对路径、设备、修改时间和当前窗口是否正在使用。把返回的 `path` 传给 `palm_open_session` 可直接打开会话。`palm_rename_session` 用 `path` 和不含 `.img` 的 `name` 重命名会话，返回新路径；运行中的会话也可直接改名。`palm_import_session` 从本地 `.img` 文件导入；`palm_duplicate_session` 保存并复制当前运行的会话，窗口随即使用副本。`palm_export_session` 将资源库中的会话写入 `destination_path`，目标文件已存在时会报错。`palm_delete_session` 把资源库中的会话移到 macOS 废纸篓；正在运行的目标会话会先保存并停止。多个窗口同时运行时，为每次调用指定 `instance_id`。
+
+`palm_open_emulator` 最多等待 90 秒，使用一次性启动令牌定位新实例，确认窗口可以接收命令后才返回。等待时会忽略旧实例留下的 socket；若仍无法连接，错误会指出 socket 目录以便检查权限或启动失败原因。
 
 截图返回 PNG 图像；触控坐标以截图左上角为原点，可从 `palm_status` 读取宽高。ROM、PRC 和 PDB 路径应使用绝对路径。控制 socket 位于 `~/Library/Application Support/Palm OS Emulator/MCP/`，目录权限为 `0700`，socket 权限为 `0600`；退出 App 后 socket 会移除。MCP 服务只访问当前 Mac 的模拟器，不能连接远程或云端运行的 App。

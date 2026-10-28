@@ -8,6 +8,7 @@ private struct LaunchOptions {
     let databases: [URL]
     let softReset: Bool
     let newWindow: Bool
+    let mcpLaunchToken: String?
 
     var shouldStart: Bool { rom != nil || !databases.isEmpty || softReset }
 
@@ -25,6 +26,7 @@ private struct LaunchOptions {
         var databases: [URL] = []
         var softReset = false
         var newWindow = false
+        var mcpLaunchToken: String?
         var index = 0
         while index < arguments.count {
             let argument = arguments[index]
@@ -35,6 +37,15 @@ private struct LaunchOptions {
             }
             if argument == "--new-window" {
                 newWindow = true
+                index += 1
+                continue
+            }
+            if argument == "--mcp-launch-token" {
+                index += 1
+                guard index < arguments.count, UUID(uuidString: arguments[index]) != nil else {
+                    throw LaunchError("--mcp-launch-token 缺少有效 UUID。")
+                }
+                mcpLaunchToken = arguments[index]
                 index += 1
                 continue
             }
@@ -75,7 +86,8 @@ private struct LaunchOptions {
             }
             index += 1
         }
-        return LaunchOptions(rom: rom, databases: databases, softReset: softReset, newWindow: newWindow)
+        return LaunchOptions(rom: rom, databases: databases, softReset: softReset,
+                             newWindow: newWindow, mcpLaunchToken: mcpLaunchToken)
     }
 
     struct LaunchError: LocalizedError {
@@ -176,6 +188,7 @@ final class EmulatorModel: ObservableObject {
     private var activeSessionURL: URL?
     private var sessionLock: SessionLock?
     private let windowSessionID: String?
+    private let mcpLaunchToken: String?
     private var pendingBrowserInstall = false
     private var pendingInstallations: [URL] = []
     private var commandLineAppToLaunch: URL?
@@ -195,6 +208,7 @@ final class EmulatorModel: ObservableObject {
             exit(EX_USAGE)
         }
         windowSessionID = options.newWindow ? UUID().uuidString : nil
+        mcpLaunchToken = options.mcpLaunchToken
         if let bundled = Bundle.main.resourceURL?.appendingPathComponent("Palm-m515-4.1-en.rom"),
            FileManager.default.fileExists(atPath: bundled.path) {
             if let device = try? EmbeddedCore().detectDevice(rom: bundled) {
@@ -227,6 +241,10 @@ final class EmulatorModel: ObservableObject {
 
     func attach(_ view: NSView) {
         displayView = view
+        if mcpControlServer == nil { startMCPServer() }
+    }
+
+    private func startMCPServer() {
         if mcpControlServer == nil {
             do { mcpControlServer = try MCPControlServer(model: self) }
             catch { fputs("CloudpilotMac: MCP 服务启动失败：\(error.localizedDescription)\n", stderr) }
@@ -454,6 +472,42 @@ final class EmulatorModel: ObservableObject {
             message = "已创建会话副本。"
             return destination
         } catch { message = "复制会话失败：\(error.localizedDescription)"; return nil }
+    }
+
+    @discardableResult func renameSession(_ item: LibraryItem, to proposedName: String) throws -> URL {
+        let name = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 80, name != ".", name != "..",
+              !name.hasPrefix("."),
+              !name.unicodeScalars.contains(where: { $0 == "/" || $0 == ":" || CharacterSet.controlCharacters.contains($0) }) else {
+            throw LaunchOptions.LaunchError("会话名称须为 1–80 个字符，不能以句点开头或包含路径分隔符和控制字符。")
+        }
+        refreshLibrary()
+        guard sessions.contains(where: { $0.url == item.url }) else {
+            throw LaunchOptions.LaunchError("会话不在当前资源库中。")
+        }
+        let destination = item.url.deletingLastPathComponent().appendingPathComponent("\(name).img")
+        if destination == item.url { return item.url }
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            throw LaunchOptions.LaunchError("同名会话已存在。")
+        }
+        let isActive = activeSessionURL == item.url
+        let oldLock = isActive ? nil : try SessionLock(for: item.url)
+        defer { _ = oldLock }
+        let newLock = try SessionLock(for: destination)
+        if isActive { saveNow() }
+        try FileManager.default.moveItem(at: item.url, to: destination)
+        if let card = UserDefaults.standard.string(forKey: "card:\(item.url.path)") {
+            UserDefaults.standard.set(card, forKey: "card:\(destination.path)")
+            UserDefaults.standard.removeObject(forKey: "card:\(item.url.path)")
+        }
+        if selectedSessionURL == item.url { selectedSessionURL = destination }
+        if isActive {
+            activeSessionURL = destination
+            sessionLock = newLock
+        }
+        refreshLibrary()
+        message = "会话已重命名为 \(name)。"
+        return destination
     }
 
     func exportSession(_ item: LibraryItem) {
@@ -708,6 +762,8 @@ final class EmulatorModel: ObservableObject {
             "device": detectedDevice ?? NSNull(),
             "rom_path": romURL?.path ?? NSNull(),
             "session_path": activeSessionURL?.path ?? NSNull(),
+            "launch_token": mcpLaunchToken ?? NSNull(),
+            "window_ready": displayView?.window != nil,
             "ui_ready": core?.uiReady ?? false,
             "ready_for_install": readyForMCPInstall,
             "network_enabled": networkEnabled,
@@ -742,7 +798,7 @@ final class EmulatorModel: ObservableObject {
                  "modified_at": ISO8601DateFormatter().string(from: item.modified),
                  "active": activeSessionURL == item.url] as [String: Any]
             }])
-        case "open_session", "export_session", "delete_session":
+        case "open_session", "export_session", "delete_session", "rename_session":
             guard let url = fileURL(request["path"]) else {
                 return failure("请提供资源库中现有会话的绝对路径。")
             }
@@ -752,6 +808,13 @@ final class EmulatorModel: ObservableObject {
             }
             if command == "open_session" {
                 return openSession(item) ? success(mcpStatus()) : failure(message)
+            }
+            if command == "rename_session" {
+                guard let name = request["name"] as? String else { return failure("缺少 name。") }
+                do {
+                    let destination = try renameSession(item, to: name)
+                    return success(["old_path": url.path, "path": destination.path, "message": message])
+                } catch { return failure("重命名失败：\(error.localizedDescription)") }
             }
             if command == "export_session" {
                 guard let destination = request["destination_path"] as? String,

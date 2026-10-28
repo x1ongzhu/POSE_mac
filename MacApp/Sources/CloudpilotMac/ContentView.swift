@@ -222,6 +222,10 @@ private struct LibraryView: View {
     @State private var tab = 0
     @State private var selectedSessionURL: URL?
     @State private var selectedCardURL: URL?
+    @State private var showingRename = false
+    @State private var showingRenameError = false
+    @State private var renameName = ""
+    @State private var renameError = ""
 
     private var selectedSession: EmulatorModel.LibraryItem? {
         model.sessions.first { $0.url == selectedSessionURL }
@@ -270,6 +274,13 @@ private struct LibraryView: View {
                 HStack {
                     Button("导入…") { model.importSession() }
                     Button("打开") { if let selectedSession { openSession(selectedSession) } }
+                    .disabled(selectedSession == nil)
+                    Button("重命名…") {
+                        if let selectedSession {
+                            renameName = selectedSession.name
+                            showingRename = true
+                        }
+                    }
                     .disabled(selectedSession == nil)
                     Button("复制当前会话") { model.duplicateSession() }
                         .disabled(!model.isRunning)
@@ -326,6 +337,25 @@ private struct LibraryView: View {
         .padding(20)
         .frame(width: 580, height: 430)
         .onAppear { model.refreshLibrary() }
+        .alert("重命名会话", isPresented: $showingRename) {
+            TextField("会话名称", text: $renameName)
+            Button("取消", role: .cancel) {}
+            Button("重命名") {
+                guard let selectedSession else { return }
+                do { selectedSessionURL = try model.renameSession(selectedSession, to: renameName) }
+                catch {
+                    renameError = error.localizedDescription
+                    showingRenameError = true
+                }
+            }
+        } message: {
+            Text("文件扩展名 .img 会自动保留。")
+        }
+        .alert("无法重命名会话", isPresented: $showingRenameError) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text(renameError)
+        }
     }
 
     private func openSession(_ item: EmulatorModel.LibraryItem) {

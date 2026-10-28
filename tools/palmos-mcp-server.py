@@ -9,6 +9,7 @@ import socket
 import subprocess
 import sys
 import time
+import uuid
 
 
 VERSION = "2025-11-25"
@@ -62,6 +63,9 @@ TOOLS = [
     tool("palm_list_sessions", "List saved sessions in the emulator resource library, including device and active state.", INSTANCE),
     tool("palm_open_session", "Open a saved session by its path from palm_list_sessions.",
          {**INSTANCE, **PATH}, ["path"]),
+    tool("palm_rename_session", "Rename a saved session in the resource library; .img is retained.",
+         {**INSTANCE, **PATH, "name": {"type": "string", "description": "New session name without .img."}},
+         ["path", "name"]),
     tool("palm_import_session", "Import a local .img session into the emulator resource library.",
          {**INSTANCE, **PATH}, ["path"]),
     tool("palm_duplicate_session", "Save and duplicate the running session, then continue in the copy.", INSTANCE),
@@ -80,10 +84,10 @@ TOOLS = [
 ]
 
 
-def control(sock_path, command, **arguments):
+def control(sock_path, command, *, timeout=20, **arguments):
     request = json.dumps({"command": command, **arguments}, ensure_ascii=False).encode() + b"\n"
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-        connection.settimeout(20)
+        connection.settimeout(timeout)
         connection.connect(str(sock_path))
         connection.sendall(request)
         response = bytearray()
@@ -104,7 +108,7 @@ def list_instances():
     instances = []
     for path in sorted(SOCKET_DIR.glob("instance-*.sock")):
         try:
-            instances.append(control(path, "status"))
+            instances.append(control(path, "status", timeout=5))
         except (OSError, RuntimeError, ValueError, KeyError):
             continue
     return instances
@@ -145,22 +149,36 @@ def call_tool(name, arguments):
         with (app / "Contents" / "Info.plist").open("rb") as info_file:
             if plistlib.load(info_file).get("CFBundleIdentifier") != "org.cloudpilot.mac":
                 raise ValueError(f"Not a Palm OS Emulator app bundle: {app}")
-        before = {item["instance_id"] for item in list_instances()}
-        command = ["/usr/bin/open", "-n", str(app), "--args", "--new-window"]
+        token = str(uuid.uuid4())
+        before = {}
+        for path in SOCKET_DIR.glob("instance-*.sock"):
+            try:
+                before[path] = path.stat().st_ino
+            except OSError:
+                pass
+        command = ["/usr/bin/open", "-n", str(app), "--args", "--new-window", "--mcp-launch-token", token]
         for option, key in (("--rom", "rom_path"), ("--install", "install_path")):
             if key in arguments:
                 path = Path(arguments[key]).expanduser().resolve()
                 if not path.is_file():
                     raise ValueError(f"File not found: {path}")
                 command.extend((option, str(path)))
-        subprocess.run(command, check=True, capture_output=True, text=True)
-        deadline = time.monotonic() + 15
+        launch = subprocess.run(command, capture_output=True, text=True)
+        if launch.returncode:
+            raise RuntimeError(f"Could not open Palm OS Emulator: {launch.stderr.strip() or launch.stdout.strip()}")
+        deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            new = [item for item in list_instances() if item["instance_id"] not in before]
-            if new:
-                return {"instance": new[0]}
-            time.sleep(0.2)
-        raise TimeoutError("App opened, but its MCP control socket did not appear")
+            for path in sorted(SOCKET_DIR.glob("instance-*.sock")):
+                try:
+                    if before.get(path) == path.stat().st_ino:
+                        continue
+                    instance = control(path, "status", timeout=2)
+                    if instance.get("launch_token") == token and instance.get("window_ready"):
+                        return {"instance": instance}
+                except (OSError, RuntimeError, ValueError, KeyError):
+                    continue
+            time.sleep(0.25)
+        raise TimeoutError(f"App opened, but its MCP control socket did not become ready within 90 seconds; check {SOCKET_DIR} and the app's stderr")
     sock_path = selected_socket(arguments)
     if name == "palm_wait_ready":
         timeout = arguments.get("timeout_seconds", 60)
@@ -187,7 +205,8 @@ def call_tool(name, arguments):
         "palm_hardware_button": "hardware_button", "palm_install": "install",
         "palm_launch_app": "launch_app", "palm_load_rom": "load_rom",
         "palm_start": "start", "palm_list_sessions": "list_sessions",
-        "palm_open_session": "open_session", "palm_import_session": "import_session",
+        "palm_open_session": "open_session", "palm_rename_session": "rename_session",
+        "palm_import_session": "import_session",
         "palm_duplicate_session": "duplicate_session", "palm_export_session": "export_session",
         "palm_delete_session": "delete_session", "palm_stop": "stop", "palm_quit": "quit", "palm_reset": "reset",
         "palm_save": "save", "palm_hot_sync": "hot_sync", "palm_set_network": "set_network",
